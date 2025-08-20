@@ -1,0 +1,45 @@
+# AURA Voice AI - Docker Compose
+# Compose file for running the FastAPI backend and Redis for memory storage.
+
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GROK_API_KEY=${GROK_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - redis
+    networks:
+      - aura-network
+    
+  redis:
+    image: redis:7-alpine
+    container_name: aura-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - aura-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  aura-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
