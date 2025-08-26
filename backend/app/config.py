@@ -1,5 +1,5 @@
 # Configuration for AURA Voice AI
-# Centralized environment-backed settings used across the backend.
+# Week 5-6: Added voice pipeline settings
 
 from pydantic_settings import BaseSettings
 from typing import Optional
@@ -10,32 +10,43 @@ import os
 load_dotenv(verbose=True)
 
 class Settings(BaseSettings):
-    # Simple configuration - uses .env for local development secrets.
-    # Create a .env file in backend/ directory with your API keys.
+    # Simple configuration - use .env file for secrets
     
-    # API keys
+    # API Keys (Week 1-2)
     GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    
+    # Voice API Keys (Week 5-6)
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel voice default
     
     # API URLs
     GROK_API_URL: str = "https://api.x.ai/v1"
     OPENAI_API_URL: str = "https://api.openai.com/v1"
+    ELEVENLABS_API_URL: str = "https://api.elevenlabs.io/v1"
     
-    # Health check settings
-    HEALTH_CHECK_INTERVAL: int = 15  # Check every 15 seconds
-    API_TIMEOUT: int = 30  # 30 second timeout for API calls
+    # Health Check Settings
+    HEALTH_CHECK_INTERVAL: int = 15
+    API_TIMEOUT: int = 30
     
-    # Rate limits (requests per minute)
+    # Rate Limits
     GROK_RATE_LIMIT: int = 100
     OPENAI_RATE_LIMIT: int = 500
+    
+    # Redis URL (Week 3-4)
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    
+    # Future: Social Media API Keys (Week 13-14)
+    # YOUTUBE_API_KEY: Optional[str] = None
+    # LINKEDIN_ACCESS_TOKEN: Optional[str] = None
+    # X_BEARER_TOKEN: Optional[str] = None
     
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
 
-# Global settings instance (import and use as a singleton)
+# Create global settings instance
 settings = Settings()
 
-# Minimal startup visibility for configuration presence (keys are not printed)
-print(f"Config loaded - GROK configured: {bool(settings.GROK_API_KEY)}")
-print(f"Config loaded - OpenAI configured: {bool(settings.OPENAI_API_KEY)}")
+# Debug output (remove after testing)
+print(f"Config loaded - Voice configured: {bool(settings.ELEVENLABS_API_KEY)}")
