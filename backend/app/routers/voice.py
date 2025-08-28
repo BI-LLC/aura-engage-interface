@@ -1,5 +1,5 @@
-# Voice router for AURA Voice AI
-# Week 5-6: Voice endpoints for STT and TTS
+# Voice processing endpoints
+# Speech-to-text and text-to-speech API routes
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
@@ -13,13 +13,13 @@ from app.services.memory_engine import MemoryEngine
 
 logger = logging.getLogger(__name__)
 
-# Create router
+# Set up API routes
 router = APIRouter(prefix="/voice", tags=["voice"])
 
-# Initialize services
+# Voice processing services
 voice_pipeline = VoicePipeline()
-smart_router = None  # Will be set from main
-memory_engine = None  # Will be set from main
+smart_router = None  # Gets injected from main app
+memory_engine = None  # Gets injected from main app
 
 def set_services(sr: SmartRouter, me: MemoryEngine):
     """Set service instances from main app"""

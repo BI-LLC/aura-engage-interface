@@ -1,5 +1,5 @@
 # Streaming Handler for AURA Voice AI
-# Week 7-8: Real-time audio streaming for faster responses
+# Real-time audio streaming for faster responses
 
 import asyncio
 import re
@@ -24,7 +24,7 @@ class StreamingHandler:
     def __init__(self, voice_pipeline=None):
         """
         Initialize streaming handler
-        Week 7-8: Handles real-time streaming of LLM to TTS
+        Handles real-time streaming of LLM to TTS
         """
         self.voice_pipeline = voice_pipeline
         

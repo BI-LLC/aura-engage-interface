@@ -1,5 +1,5 @@
-# Enhanced Smart Router with Streaming Support
-# Week 7-8: Added streaming capabilities for LLMs
+# Smart routing system for LLM requests
+# Handles load balancing between different AI providers
 
 import asyncio
 import time
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LLMResponse:
-    # Simple response object
+    # Response data from LLM calls
     content: str
     model_used: str
     response_time: float
@@ -24,41 +24,40 @@ class LLMResponse:
 
 class SmartRouter:
     def __init__(self):
-        # Initialize the router with basic tracking
-        # Week 7-8: Added streaming support
+        # Set up router with health monitoring and cost tracking
         
-        # Track API health
+        # Keep track of which APIs are working
         self.api_health = {
             "grok": {"status": "unknown", "last_check": None, "failures": 0},
             "openai": {"status": "unknown", "last_check": None, "failures": 0}
         }
         
-        # Track costs
+        # Running total of API costs
         self.costs = {"grok": 0.0, "openai": 0.0}
         
-        # Track requests for rate limiting
+        # Request history for rate limit checks
         self.request_counts = {"grok": [], "openai": []}
         self.total_requests = 0
         
-        # Error tracking
+        # Recent errors for monitoring
         self.error_window = []
         
-        # Health monitor task
+        # Background task handle
         self.health_monitor_task = None
         
-        # Streaming support
+        # Whether streaming is enabled
         self.streaming_enabled = True
         
         logger.info("Smart Router initialized with streaming support")
     
     async def start_health_monitor(self):
-        # Start the health monitor task
+        # Kick off background health checking
         if self.health_monitor_task is None:
             self.health_monitor_task = asyncio.create_task(self._health_monitor_loop())
             logger.info("Health monitor started")
     
     async def _health_monitor_loop(self):
-        # Background task to ping APIs every 15 seconds
+        # Keep checking if our APIs are still working
         await asyncio.sleep(2)
         while True:
             try:
@@ -69,8 +68,8 @@ class SmartRouter:
                 await asyncio.sleep(15)
     
     async def _check_api_health(self):
-        # Check if APIs are responding
-        # Check Grok
+        # Ping each API to see if it's alive
+        # Test Grok API
         try:
             from app.config import settings
             if settings.GROK_API_KEY:
@@ -82,7 +81,7 @@ class SmartRouter:
             self.api_health["grok"]["status"] = "unhealthy"
             self.api_health["grok"]["failures"] += 1
         
-        # Check OpenAI
+        # Test OpenAI API
         try:
             from app.config import settings
             if settings.OPENAI_API_KEY:
@@ -95,7 +94,7 @@ class SmartRouter:
             self.api_health["openai"]["failures"] += 1
     
     def _classify_query(self, message: str) -> str:
-        # Simple routing logic based on query type
+        # Figure out which AI would handle this best
         message_lower = message.lower()
         word_count = len(message.split())
         
@@ -118,7 +117,7 @@ class SmartRouter:
     ) -> AsyncGenerator[str, None]:
         """
         Stream response from LLM
-        Week 7-8: New streaming method
+        New streaming method for real-time responses
         """
         preferred_provider = self._classify_query(message)
         
@@ -142,7 +141,7 @@ class SmartRouter:
     async def _stream_openai(self, message: str) -> AsyncGenerator[str, None]:
         """
         Stream response from OpenAI
-        Week 7-8: Actual streaming implementation
+        Actual streaming implementation
         """
         from app.config import settings
         
@@ -168,7 +167,7 @@ class SmartRouter:
     async def _stream_grok(self, message: str) -> AsyncGenerator[str, None]:
         """
         Stream response from Grok
-        Week 7-8: Grok streaming (when available)
+        Grok streaming implementation
         """
         from app.config import settings
         

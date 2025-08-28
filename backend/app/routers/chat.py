@@ -1,180 +1,172 @@
-# backend/app/routers/chat.py
-"""
-Chat router for AURA Voice AI with document knowledge integration
-Handles text chat with memory and document context
-"""
+# Chat API endpoints
+# Handles conversations with personalization and knowledge search
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, List, Dict
-from datetime import datetime
-import uuid
 import logging
+import uuid
+from datetime import datetime
 
 from app.services.smart_router import SmartRouter
 from app.services.memory_engine import MemoryEngine, ConversationSummary
-from app.services.document_processor import DocumentProcessor
+from app.services.persona_manager import PersonaManager
+from app.services.data_ingestion import DataIngestionService
 
 logger = logging.getLogger(__name__)
 
-# Create router
+# Set up chat endpoints
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# Service instances (will be set from main)
+# Services that get injected from main app
 smart_router = None
 memory_engine = None
-doc_processor = None
+persona_manager = PersonaManager()
+data_service = DataIngestionService()
 
-def set_services(sr: SmartRouter, me: MemoryEngine, dp: DocumentProcessor):
-    """Set service instances from main app"""
-    global smart_router, memory_engine, doc_processor
-    smart_router = sr
-    memory_engine = me
-    doc_processor = dp
-
-# Request/Response models
-class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
-    timestamp: Optional[datetime] = None
-
+# API data models
 class ChatRequest(BaseModel):
     message: str
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     use_memory: bool = True
-    use_documents: bool = True  # Enable document search
-    stream: bool = False
+    use_persona: bool = True
+    search_knowledge: bool = True
 
 class ChatResponse(BaseModel):
     response: str
+    session_id: str
     model_used: str
     response_time: float
     cost: float
-    session_id: str
-    memory_used: bool
-    documents_used: bool
-    sources: Optional[List[str]] = None  # Document sources if used
+    persona_applied: bool
+    knowledge_used: bool
+    sources: List[str] = []
+
+def set_services(sr: SmartRouter, me: MemoryEngine):
+    """Set service instances from main app"""
+    global smart_router, memory_engine
+    smart_router = sr
+    memory_engine = me
 
 @router.post("/", response_model=ChatResponse)
-async def chat_endpoint(
+async def chat(
     request: ChatRequest,
     background_tasks: BackgroundTasks
 ):
-    """
-    Main chat endpoint with memory and document integration
-    """
-    if not smart_router:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
-    
+    """Enhanced chat endpoint with persona and knowledge integration"""
     try:
-        # Generate or use session ID
-        session_id = request.session_id or str(uuid.uuid4())[:8]
-        user_id = request.user_id or "default_user"
+        if not smart_router:
+            raise HTTPException(status_code=503, detail="Services not initialized")
         
-        # Build context for the message
-        enhanced_message = request.message
-        context_parts = []
-        documents_used = False
+        # Generate session ID if not provided
+        session_id = request.session_id or str(uuid.uuid4())
+        user_id = request.user_id or "anonymous"
+        
+        # Step 1: Search knowledge base if enabled
+        knowledge_context = ""
         sources = []
         
-        # 1. Add document context if enabled
-        if request.use_documents and doc_processor:
-            try:
-                # Search for relevant documents
-                doc_context = doc_processor.get_context_for_chat(
-                    query=request.message,
-                    user_id=user_id
-                )
-                
-                if doc_context:
-                    context_parts.append(doc_context)
-                    documents_used = True
-                    # Extract document names from context (simple parsing)
-                    import re
-                    doc_matches = re.findall(r'\[Document: (.*?)\]', doc_context)
-                    sources = list(set(doc_matches))[:3]  # Top 3 unique sources
-                    
-            except Exception as e:
-                logger.warning(f"Document search failed: {e}")
+        if request.search_knowledge and user_id != "anonymous":
+            search_results = await data_service.search_documents(
+                request.message,
+                user_id,
+                limit=3
+            )
+            
+            if search_results:
+                knowledge_context = "\n\nRelevant information from your documents:\n"
+                for result in search_results:
+                    sources.append(result["filename"])
+                    for chunk in result["relevant_chunks"][:2]:
+                        knowledge_context += f"- {chunk['chunk'][:200]}...\n"
         
-        # 2. Add memory context if enabled
-        memory_used = False
-        if request.use_memory and memory_engine:
+        # Step 2: Get memory context if enabled
+        memory_context = ""
+        
+        if request.use_memory and user_id != "anonymous" and memory_engine:
             try:
                 # Get user preferences
                 preferences = await memory_engine.get_user_preferences(user_id)
                 
-                if preferences:
-                    pref_context = f"""User preferences:
-- Communication style: {preferences.communication_style}
-- Response pace: {preferences.response_pace}
-- Areas of expertise: {', '.join(preferences.expertise_areas[:3]) if preferences.expertise_areas else 'general'}"""
-                    context_parts.append(pref_context)
-                    memory_used = True
+                # Get recent conversation summaries
+                summaries = await memory_engine.get_conversation_summaries(user_id, limit=3)
                 
-                # Get recent conversation summaries for context
-                summaries = await memory_engine.get_conversation_summaries(user_id, limit=2)
-                if summaries:
-                    recent_context = "Recent conversation topics: " + ", ".join(
-                        [s.key_topics[0] if s.key_topics else "general" for s in summaries]
-                    )
-                    context_parts.append(recent_context)
+                if preferences or summaries:
+                    memory_context = "\n\nUser context:\n"
                     
+                    if preferences:
+                        memory_context += f"- Communication style: {preferences.communication_style}\n"
+                        memory_context += f"- Preferred pace: {preferences.response_pace}\n"
+                        if preferences.expertise_areas:
+                            memory_context += f"- Areas of interest: {', '.join(preferences.expertise_areas[:3])}\n"
+                    
+                    if summaries:
+                        memory_context += "Recent conversations:\n"
+                        for summary in summaries[-2:]:
+                            memory_context += f"- {summary.summary[:100]}...\n"
+                
             except Exception as e:
                 logger.warning(f"Memory retrieval failed: {e}")
         
-        # 3. Build enhanced message with all context
-        if context_parts:
-            context_str = "\n\n".join(context_parts)
-            enhanced_message = f"""{context_str}
-
-User's current question: {request.message}
-
-Please provide a helpful response using any relevant context from above."""
+        # Step 3: Apply persona if enabled
+        enhanced_message = request.message
+        persona_applied = False
         
-        # 4. Get response from LLM
-        logger.info(f"Processing chat with memory={memory_used}, documents={documents_used}")
+        if request.use_persona and user_id != "anonymous":
+            try:
+                enhanced_message = await persona_manager.apply_persona_to_message(
+                    request.message,
+                    user_id
+                )
+                persona_applied = True
+            except Exception as e:
+                logger.warning(f"Persona application failed: {e}")
         
-        if request.stream:
-            # Streaming not implemented in this simple version
-            return ChatResponse(
-                response="Streaming not yet implemented. Please use non-streaming mode.",
-                model_used="none",
-                response_time=0,
-                cost=0,
-                session_id=session_id,
-                memory_used=False,
-                documents_used=False
-            )
+        # Step 4: Combine all context
+        full_message = enhanced_message
         
-        # Route to appropriate LLM
-        result = await smart_router.route_message(enhanced_message)
+        if knowledge_context:
+            full_message += knowledge_context
         
-        if result.error:
-            raise HTTPException(status_code=503, detail=f"LLM Error: {result.error}")
+        if memory_context:
+            full_message += memory_context
         
-        # 5. Store conversation in memory (background task)
-        if memory_engine and user_id:
+        # Step 5: Route to LLM
+        llm_response = await smart_router.route_message(full_message)
+        
+        if llm_response.error:
+            raise HTTPException(status_code=503, detail=f"LLM Error: {llm_response.error}")
+        
+        # Step 6: Store conversation in background
+        if user_id != "anonymous" and memory_engine:
             background_tasks.add_task(
                 store_conversation,
                 session_id,
                 user_id,
                 request.message,
-                result.content,
-                result.model_used
+                llm_response.content,
+                llm_response.model_used
             )
         
-        # 6. Return response
+        # Step 7: Update persona based on interaction
+        if request.use_persona and user_id != "anonymous":
+            background_tasks.add_task(
+                update_persona_feedback,
+                user_id,
+                request.message,
+                llm_response.content
+            )
+        
         return ChatResponse(
-            response=result.content,
-            model_used=result.model_used,
-            response_time=result.response_time,
-            cost=result.cost,
+            response=llm_response.content,
             session_id=session_id,
-            memory_used=memory_used,
-            documents_used=documents_used,
-            sources=sources if sources else None
+            model_used=llm_response.model_used,
+            response_time=llm_response.response_time,
+            cost=llm_response.cost,
+            persona_applied=persona_applied,
+            knowledge_used=bool(knowledge_context),
+            sources=sources
         )
         
     except HTTPException:
@@ -183,66 +175,45 @@ Please provide a helpful response using any relevant context from above."""
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-async def store_conversation(
+@router.post("/feedback")
+async def provide_feedback(
     session_id: str,
     user_id: str,
-    user_message: str,
-    ai_response: str,
-    model_used: str
+    rating: int,
+    feedback: Optional[str] = None
 ):
-    """
-    Background task to store conversation in memory
-    """
+    """Collect user feedback on responses"""
     try:
-        # Store session context
-        await memory_engine.store_session_context(
-            session_id=session_id,
-            user_id=user_id,
-            context={
-                "messages": [
-                    {"role": "user", "content": user_message},
-                    {"role": "assistant", "content": ai_response}
-                ],
-                "model_used": model_used,
-                "timestamp": datetime.now().isoformat()
-            }
-        )
+        # Store feedback for persona learning
+        if user_id != "anonymous":
+            await persona_manager.update_persona(
+                user_id,
+                {
+                    "satisfaction_rating": rating,
+                    "feedback": feedback,
+                    "session_id": session_id
+                }
+            )
         
-        # Create conversation summary (simple version)
-        # Extract key topics (simplified - just use first few words)
-        words = user_message.split()[:10]
-        key_topics = [" ".join(words[:5])] if len(words) >= 5 else [user_message[:50]]
-        
-        summary = ConversationSummary(
-            session_id=session_id,
-            user_id=user_id,
-            summary=f"Discussed: {user_message[:100]}...",
-            key_topics=key_topics,
-            timestamp=datetime.now().isoformat(),
-            message_count=2
-        )
-        
-        await memory_engine.add_conversation_summary(user_id, summary)
+        return {"success": True, "message": "Feedback received"}
         
     except Exception as e:
-        logger.error(f"Failed to store conversation: {e}")
+        logger.error(f"Feedback error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/history/{user_id}")
 async def get_chat_history(
     user_id: str,
     limit: int = 10
 ):
-    """
-    Get user's chat history
-    """
-    if not memory_engine:
-        raise HTTPException(status_code=503, detail="Memory service not initialized")
-    
+    """Get user's chat history"""
     try:
+        if not memory_engine:
+            return {"conversations": [], "message": "Memory not available"}
+        
         summaries = await memory_engine.get_conversation_summaries(user_id, limit)
         
         return {
-            "success": True,
             "user_id": user_id,
             "conversations": [
                 {
@@ -250,34 +221,121 @@ async def get_chat_history(
                     "summary": s.summary,
                     "topics": s.key_topics,
                     "timestamp": s.timestamp,
-                    "message_count": s.message_count
+                    "messages": s.message_count
                 }
                 for s in summaries
             ]
         }
         
     except Exception as e:
-        logger.error(f"Error getting chat history: {e}")
+        logger.error(f"History retrieval error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/feedback")
-async def submit_feedback(
-    session_id: str,
-    rating: int,  # 1-5
-    feedback: Optional[str] = None
-):
-    """
-    Submit feedback for a conversation
-    """
+@router.get("/context/{user_id}")
+async def get_user_context(user_id: str):
+    """Get complete user context (memory, persona, knowledge)"""
     try:
-        # Store feedback (simplified - just log for now)
-        logger.info(f"Feedback for session {session_id}: Rating={rating}, Feedback={feedback}")
-        
-        return {
-            "success": True,
-            "message": "Thank you for your feedback!"
+        context = {
+            "user_id": user_id,
+            "memory": None,
+            "persona": None,
+            "documents": []
         }
         
+        # Get memory preferences
+        if memory_engine:
+            preferences = await memory_engine.get_user_preferences(user_id)
+            if preferences:
+                context["memory"] = {
+                    "communication_style": preferences.communication_style,
+                    "response_pace": preferences.response_pace,
+                    "expertise_areas": preferences.expertise_areas
+                }
+        
+        # Get persona
+        persona_stats = await persona_manager.get_persona_stats(user_id)
+        context["persona"] = persona_stats
+        
+        # Get documents
+        documents = await data_service.get_user_documents(user_id)
+        context["documents"] = documents
+        
+        return context
+        
     except Exception as e:
-        logger.error(f"Error submitting feedback: {e}")
+        logger.error(f"Context retrieval error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Background tasks
+async def store_conversation(
+    session_id: str,
+    user_id: str,
+    message: str,
+    response: str,
+    model_used: str
+):
+    """Store conversation in memory (background task)"""
+    try:
+        if not memory_engine:
+            return
+        
+        # Store session context
+        await memory_engine.store_session_context(
+            session_id,
+            user_id,
+            {
+                "message": message,
+                "response": response[:500],
+                "model": model_used,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+        
+        # Create conversation summary
+        summary = ConversationSummary(
+            session_id=session_id,
+            user_id=user_id,
+            summary=f"Discussed: {message[:100]}",
+            key_topics=extract_topics(message),
+            timestamp=datetime.now().isoformat(),
+            message_count=1
+        )
+        
+        await memory_engine.add_conversation_summary(user_id, summary)
+        
+    except Exception as e:
+        logger.error(f"Failed to store conversation: {e}")
+
+async def update_persona_feedback(
+    user_id: str,
+    message: str,
+    response: str
+):
+    """Update persona based on interaction (background task)"""
+    try:
+        # Simple feedback signals
+        feedback = {
+            "conversation_length": len(message.split()) + len(response.split()),
+            "follow_up_questions": message.count("?"),
+            "requested_examples": "example" in message.lower() or "show me" in message.lower()
+        }
+        
+        await persona_manager.update_persona(user_id, feedback)
+        
+    except Exception as e:
+        logger.error(f"Failed to update persona: {e}")
+
+def extract_topics(text: str) -> List[str]:
+    """Extract key topics from text (simple implementation)"""
+    # Simple keyword extraction
+    words = text.lower().split()
+    
+    # Filter common words
+    stop_words = {"the", "is", "at", "which", "on", "and", "a", "an", "as", "are", "was", "were", "been", "be", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "can", "could"}
+    
+    topics = []
+    for word in words:
+        if len(word) > 4 and word not in stop_words:
+            topics.append(word)
+    
+    return list(set(topics))[:5]  # Return top 5 unique topics

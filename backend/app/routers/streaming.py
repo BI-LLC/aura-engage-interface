@@ -1,5 +1,5 @@
 # Streaming router for AURA Voice AI
-# Week 7-8: WebSocket and SSE endpoints for streaming
+# WebSocket and SSE endpoints for streaming
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import StreamingResponse

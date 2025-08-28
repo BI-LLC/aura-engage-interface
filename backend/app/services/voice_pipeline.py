@@ -1,5 +1,5 @@
-# Voice Pipeline for AURA Voice AI
-# Week 5-6: Speech-to-text and text-to-speech processing
+# Voice processing pipeline
+# Handles converting speech to text and back again
 
 import io
 import base64
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AudioTranscription:
-    # Result from speech-to-text
+    # What we got back from transcription
     text: str
     language: str = "en"
     duration: float = 0.0
@@ -24,7 +24,7 @@ class AudioTranscription:
 
 @dataclass
 class AudioSynthesis:
-    # Result from text-to-speech
+    # Audio file we generated
     audio_base64: str
     content_type: str = "audio/mpeg"
     duration: float = 0.0
@@ -32,15 +32,15 @@ class AudioSynthesis:
 
 class VoicePipeline:
     def __init__(self):
-        # Initialize with API keys from environment
+        # Get our API keys from environment variables
         self.openai_key = os.getenv("OPENAI_API_KEY", "")
         self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
         
-        # ElevenLabs settings
+        # Voice synthesis configuration
         self.elevenlabs_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel voice default
         self.elevenlabs_model = "eleven_monolingual_v1"
         
-        # Validate API keys
+        # Check if we have the keys we need
         self.whisper_available = bool(self.openai_key)
         self.elevenlabs_available = bool(self.elevenlabs_key)
         
@@ -50,8 +50,8 @@ class VoicePipeline:
     
     async def transcribe_audio(self, audio_data: bytes, audio_format: str = "webm") -> AudioTranscription:
         """
-        Convert speech to text using OpenAI Whisper
-        Audio data should be in bytes format
+        Turn audio into text using Whisper
+        Pass in the audio file as bytes
         """
         if not self.whisper_available:
             logger.error("Whisper API not configured (missing OPENAI_API_KEY)")
@@ -60,11 +60,11 @@ class VoicePipeline:
         try:
             logger.info(f"Transcribing audio ({len(audio_data)} bytes)")
             
-            # Create a file-like object from bytes
+            # Whisper needs a file, so wrap our bytes
             audio_file = io.BytesIO(audio_data)
             audio_file.name = f"audio.{audio_format}"
             
-            # Use OpenAI Whisper API
+            # Call Whisper to transcribe
             client = openai.OpenAI(api_key=self.openai_key)
             
             response = await asyncio.to_thread(
@@ -72,7 +72,7 @@ class VoicePipeline:
                 model="whisper-1",
                 file=audio_file,
                 response_format="json",
-                language="en"  # Can be made dynamic later
+                language="en"  # Could detect language automatically later
             )
             
             logger.info(f"Transcription successful: {response.text[:50]}...")
