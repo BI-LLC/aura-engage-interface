@@ -91,7 +91,7 @@ class FineTuner:
             logger.error(f"OpenAI fine-tuning failed: {e}")
             return {"error": str(e)}
     
-    async function start_grok_finetuning(
+    async def start_grok_finetuning(
         self,
         training_file_path: str,
         user_id: str

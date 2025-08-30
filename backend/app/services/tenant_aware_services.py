@@ -2,6 +2,15 @@
 Services that keep each tenant's data separate
 """
 
+import os
+from typing import Optional, Dict, List, AsyncGenerator
+from datetime import datetime
+
+# Import required classes
+from .tenant_manager import TenantManager
+from .smart_router import SmartRouter, LLMResponse
+from .data_ingestion import Document
+
 class TenantAwareDataIngestion:
     """File processing that keeps each organization's data separate"""
     

@@ -3,7 +3,7 @@ Admin endpoints with tenant isolation
 Each admin only sees their own organization's data
 """
 
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, File, UploadFile
 from typing import List, Dict
 
 router = APIRouter(prefix="/admin", tags=["tenant-admin"])

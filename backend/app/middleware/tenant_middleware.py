@@ -6,6 +6,9 @@ from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
 
+# Import auth service
+from app.services.auth_service import TenantAuthService
+
 logger = logging.getLogger(__name__)
 
 class TenantMiddleware:

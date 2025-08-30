@@ -7,6 +7,8 @@ from datetime import datetime
 import asyncio
 import json
 
+from app.models.tenant import TenantModel, TenantUserModel
+
 logger = logging.getLogger(__name__)
 
 class TenantManager:

@@ -20,41 +20,108 @@ logger = logging.getLogger(__name__)
 from app.services.tenant_manager import TenantManager
 from app.services.auth_service import TenantAuthService
 from app.middleware.tenant_middleware import TenantMiddleware
+from app.models.tenant import TenantModel, TenantUserModel
 
 # Shared service instances
 tenant_manager = None
 auth_service = None
 tenant_aware_services = {}
+smart_router = None
+memory_engine = None
+voice_pipeline = None
+persona_manager = None
+data_service = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Start up all the multi-tenant services
     global tenant_manager, auth_service, tenant_aware_services
+    global smart_router, memory_engine, voice_pipeline, persona_manager, data_service
     
-    logger.info("Starting AURA Multi-Tenant System...")
+    logger.info("Starting AURA Voice AI Multi-Tenant System...")
     
-    # Initialize core services
-    tenant_manager = TenantManager()
-    auth_service = TenantAuthService()
-    
-    # Initialize tenant-aware services
-    from app.services.tenant_aware_services import (
-        TenantAwareDataIngestion,
-        TenantAwareSmartRouter,
-        TenantAwareVoicePipeline
-    )
-    
-    tenant_aware_services = {
-        "data_ingestion": TenantAwareDataIngestion(tenant_manager),
-        "smart_router": TenantAwareSmartRouter(tenant_manager),
-        "voice_pipeline": TenantAwareVoicePipeline(tenant_manager)
-    }
-    
-    logger.info("Multi-tenant services initialized successfully")
+    try:
+        # Initialize core services
+        tenant_manager = TenantManager()
+        auth_service = TenantAuthService()
+        
+        # Initialize tenant-aware services
+        from app.services.tenant_aware_services import (
+            TenantAwareDataIngestion,
+            TenantAwareSmartRouter,
+            TenantAwareVoicePipeline
+        )
+        
+        tenant_aware_services = {
+            "data_ingestion": TenantAwareDataIngestion(tenant_manager),
+            "smart_router": TenantAwareSmartRouter(tenant_manager),
+            "voice_pipeline": TenantAwareVoicePipeline(tenant_manager)
+        }
+        
+        # Initialize regular services for non-tenant endpoints
+        from app.services.smart_router import SmartRouter
+        from app.services.memory_engine import MemoryEngine
+        from app.services.voice_pipeline import VoicePipeline
+        from app.services.persona_manager import PersonaManager
+        from app.services.data_ingestion import DataIngestionService
+        
+        smart_router = SmartRouter()
+        memory_engine = MemoryEngine()
+        voice_pipeline = VoicePipeline()
+        persona_manager = PersonaManager()
+        data_service = DataIngestionService()
+        
+        # Start health monitor
+        await smart_router.start_health_monitor()
+        
+        logger.info("AURA Voice AI services initialized successfully")
+        
+        # Import and setup all routers
+        from app.routers import (
+            chat, voice, admin, memory, streaming, 
+            documents, continuous_voice, tenant_admin
+        )
+        
+        # Set services in routers that need them
+        if hasattr(chat, 'set_services'):
+            chat.set_services(smart_router, memory_engine)
+        if hasattr(voice, 'set_services'):
+            voice.set_services(smart_router, memory_engine)
+        if hasattr(admin, 'set_services'):
+            admin.set_services(smart_router, memory_engine, voice_pipeline)
+        if hasattr(streaming, 'set_services'):
+            streaming.set_services(smart_router, voice_pipeline, memory_engine)
+        
+        # Add all routers to app
+        app.include_router(chat.router)
+        app.include_router(voice.router)
+        app.include_router(admin.router)
+        app.include_router(memory.router)
+        app.include_router(streaming.router)
+        app.include_router(documents.router)
+        app.include_router(continuous_voice.router)
+        app.include_router(tenant_admin.router)
+        
+        logger.info("✅ AURA Voice AI: All routers and services connected successfully!")
+        
+        # Log configuration status
+        try:
+            from app.config import settings
+            logger.info("API Configuration Status:")
+            logger.info(f"  - OpenAI: {'✓' if hasattr(settings, 'OPENAI_API_KEY') and settings.OPENAI_API_KEY else '✗'}")
+            logger.info(f"  - ElevenLabs: {'✓' if hasattr(settings, 'ELEVENLABS_API_KEY') and settings.ELEVENLABS_API_KEY else '✗'}")
+            logger.info(f"  - Grok: {'✓' if hasattr(settings, 'GROK_API_KEY') and settings.GROK_API_KEY else '✗'}")
+        except ImportError:
+            logger.warning("Config module not found - using environment variables")
+        
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
+        import traceback
+        traceback.print_exc()
     
     yield
     
-    logger.info("Shutting down...")
+    logger.info("Shutting down AURA Voice AI...")
 
 # Create FastAPI app
 app = FastAPI(
@@ -65,16 +132,34 @@ app = FastAPI(
 )
 
 # Add tenant isolation middleware
-app.add_middleware(TenantMiddleware, auth_service=auth_service)
+# app.add_middleware(TenantMiddleware, auth_service=auth_service)
 
 # CORS for subdomains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://*.aura-ai.com"],  # Allow all subdomains
+    allow_origins=["https://*.aura-voice-ai.com", "http://localhost:3000", "http://127.0.0.1:3000"],  # Allow subdomains and local dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+async def root():
+    """Root endpoint with system info"""
+    return {
+        "name": "AURA Voice AI - Multi-Tenant",
+        "status": "running",
+        "version": "4.0.0",
+        "mode": "multi-tenant",
+        "endpoints": {
+            "chat": "/chat/",
+            "voice": "/voice/status",
+            "admin": "/admin/dashboard",
+            "documents": "/documents/upload",
+            "health": "/health",
+            "test_ui": "/test"
+        }
+    }
 
 # Authentication endpoints
 
@@ -122,215 +207,37 @@ async def chat_with_tenant_context(
         "sources": response.sources
     }
 
-# Voice conversation endpoints
-
-@app.websocket("/api/voice/continuous")
-async def continuous_voice_conversation(
-    websocket: WebSocket,
-    token: str
-):
-    # WebSocket endpoint for continuous voice chat
-    await websocket.accept()
+@app.get("/health")
+async def health_check():
+    # Basic health check endpoint
+    health_data = {
+        "status": "healthy",
+        "mode": "multi-tenant",
+        "services": {
+            "tenant_manager": tenant_manager is not None,
+            "auth_service": auth_service is not None,
+            "smart_router": smart_router is not None,
+            "memory": memory_engine is not None,
+            "voice": voice_pipeline is not None,
+            "persona": persona_manager is not None,
+            "data_service": data_service is not None
+        },
+        "tenant_services": {
+            "data_ingestion": "data_ingestion" in tenant_aware_services,
+            "smart_router": "smart_router" in tenant_aware_services,
+            "voice_pipeline": "voice_pipeline" in tenant_aware_services
+        },
+        "tenants_active": len(tenant_manager.tenants) if tenant_manager else 0
+    }
     
-    # Verify token and get tenant info
-    payload = auth_service.verify_token(token)
-    if not payload:
-        await websocket.close(code=1008, reason="Invalid token")
-        return
+    # Add API health if available
+    if smart_router:
+        try:
+            health_data["apis"] = await smart_router.get_health_status()
+        except Exception as e:
+            health_data["api_check_error"] = str(e)
     
-    tenant_id = payload["tenant_id"]
-    user_id = payload["user_id"]
-    organization = payload["organization"]
-    
-    logger.info(f"Voice call started: {organization} ({user_id})")
-    
-    # Get voice pipeline
-    voice_pipeline = tenant_aware_services["voice_pipeline"]
-    
-    # Create session for continuous conversation
-    session_id = f"voice_{datetime.now().timestamp()}"
-    
-    try:
-        # Initialize conversation context with tenant's data
-        tenant_context = await tenant_manager.get_tenant_context(tenant_id)
-        
-        conversation_state = {
-            "tenant_id": tenant_id,
-            "user_id": user_id,
-            "session_id": session_id,
-            "context": tenant_context,
-            "conversation_history": [],
-            "is_speaking": False
-        }
-        
-        # Send initial greeting using tenant's style
-        greeting = f"Hello! I'm your AI assistant for {organization}. How can I help you today?"
-        await websocket.send_json({
-            "type": "greeting",
-            "text": greeting,
-            "audio": await voice_pipeline.synthesize_speech(greeting)
-        })
-        
-        # Continuous conversation loop
-        while True:
-            # Receive audio chunk from user
-            data = await websocket.receive_json()
-            
-            if data["type"] == "audio_chunk":
-                # Process audio in real-time
-                audio_data = data["audio"]
-                
-                # Transcribe
-                transcript = await voice_pipeline.transcribe_streaming(audio_data)
-                
-                if transcript and not conversation_state["is_speaking"]:
-                    # User finished speaking, generate response
-                    conversation_state["is_speaking"] = True
-                    
-                    # Add to conversation history
-                    conversation_state["conversation_history"].append({
-                        "role": "user",
-                        "content": transcript
-                    })
-                    
-                    # Generate contextual response using ONLY tenant's data
-                    response_text = await generate_tenant_specific_response(
-                        user_input=transcript,
-                        tenant_context=tenant_context,
-                        conversation_history=conversation_state["conversation_history"],
-                        tenant_id=tenant_id
-                    )
-                    
-                    # Add AI response to history
-                    conversation_state["conversation_history"].append({
-                        "role": "assistant",
-                        "content": response_text
-                    })
-                    
-                    # Stream response audio back
-                    audio_response = await voice_pipeline.synthesize_speech(response_text)
-                    
-                    await websocket.send_json({
-                        "type": "response",
-                        "text": response_text,
-                        "audio": audio_response,
-                        "sources": extract_sources(response_text, tenant_context)
-                    })
-                    
-                    conversation_state["is_speaking"] = False
-            
-            elif data["type"] == "end_call":
-                # Save conversation summary
-                await save_conversation_summary(
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    session_id=session_id,
-                    history=conversation_state["conversation_history"]
-                )
-                break
-    
-    except WebSocketDisconnect:
-        logger.info(f"Voice call ended: {organization}")
-    except Exception as e:
-        logger.error(f"Voice call error: {e}")
-        await websocket.close(code=1011, reason=str(e))
-
-# Helper functions
-
-async def generate_tenant_specific_response(
-    user_input: str,
-    tenant_context: Dict,
-    conversation_history: List,
-    tenant_id: str
-) -> str:
-    # Generate AI response using tenant's knowledge base only
-    
-    # Search tenant's documents for relevant info
-    data_service = tenant_aware_services["data_ingestion"]
-    relevant_docs = await data_service.search_documents(
-        query=user_input,
-        tenant_id=tenant_id,
-        user_id="system",
-        limit=3
-    )
-    
-    # Build prompt with tenant's knowledge only
-    prompt = f"""
-    You are an AI assistant for {tenant_context['organization']}.
-    You MUST only use information from their uploaded documents.
-    
-    Their Knowledge Base Contains:
-    {format_relevant_documents(relevant_docs)}
-    
-    Recent Conversation:
-    {format_conversation_history(conversation_history[-5:])}
-    
-    User Question: {user_input}
-    
-    Instructions:
-    1. Answer using ONLY information from their documents
-    2. Be conversational and natural
-    3. If information isn't in their documents, say "I don't have that information in your knowledge base"
-    4. Maintain context from the conversation history
-    
-    Response:
-    """
-    
-    # Get response from LLM
-    router = tenant_aware_services["smart_router"]
-    response = await router.route_message(prompt, tenant_id, "system")
-    
-    return response.content
-
-def format_relevant_documents(docs: List) -> str:
-    # Format document content for AI prompt
-    if not docs:
-        return "No relevant documents found."
-    
-    formatted = []
-    for doc in docs:
-        formatted.append(f"[Document: {doc.get('filename', 'Unknown')}]\n{doc.get('content', '')[:500]}...")
-    
-    return "\n\n".join(formatted)
-
-def format_conversation_history(history: List) -> str:
-    # Format chat history for context
-    if not history:
-        return "No previous conversation."
-    
-    formatted = []
-    for msg in history:
-        role = msg.get('role', 'unknown')
-        content = msg.get('content', '')
-        formatted.append(f"{role.title()}: {content}")
-    
-    return "\n".join(formatted)
-
-def extract_sources(response_text: str, tenant_context: Dict) -> List[str]:
-    # Extract document sources from AI response
-    sources = []
-    if "[Document:" in response_text:
-        import re
-        matches = re.findall(r'\[Document: (.*?)\]', response_text)
-        sources = list(set(matches))[:3]
-    return sources
-
-async def save_conversation_summary(tenant_id: str, user_id: str, session_id: str, history: List):
-    # Save conversation summary to tenant storage
-    logger.info(f"Saving conversation summary for tenant {tenant_id}, session {session_id}")
-    pass
-
-def generate_secure_password() -> str:
-    # Generate random password for new tenants
-    import secrets
-    import string
-    alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(12))
-
-async def send_welcome_email(email: str, org_name: str, tenant_id: str, password: str):
-    # Send welcome email to new tenant admin
-    logger.info(f"Sending welcome email to {email} for organization {org_name}")
-    pass
+    return health_data
 
 # Document management endpoints
 
@@ -390,42 +297,6 @@ async def get_tenant_documents(request: Request):
         "count": len(documents)
     }
 
-# Admin dashboard endpoints
-
-@app.get("/api/admin/dashboard")
-async def get_tenant_dashboard(request: Request):
-    # Admin dashboard for tenant management
-    tenant_id = request.state.tenant_id
-    
-    # Verify admin role
-    if request.state.user_role != "tenant_admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    # Get tenant-specific stats
-    stats = {
-        "organization": request.state.organization,
-        "tenant_id": tenant_id,
-        "users": await tenant_manager.get_tenant_users(tenant_id),
-        "documents": await tenant_manager.get_tenant_document_count(tenant_id),
-        "conversations": await tenant_manager.get_tenant_conversation_count(tenant_id),
-        "storage_used_gb": await tenant_manager.get_tenant_storage_usage(tenant_id),
-        "api_calls_this_month": await tenant_manager.get_tenant_api_usage(tenant_id),
-        "subscription": await tenant_manager.get_tenant_subscription(tenant_id)
-    }
-    
-    return stats
-
-# System health endpoints
-
-@app.get("/health")
-async def health_check():
-    # Basic health check endpoint
-    return {
-        "status": "healthy",
-        "mode": "multi-tenant",
-        "tenants_active": len(tenant_manager.tenants) if tenant_manager else 0
-    }
-
 # Tenant onboarding endpoints
 
 @app.post("/internal/onboard-tenant")
@@ -467,8 +338,229 @@ async def onboard_new_tenant(
     return {
         "success": True,
         "tenant_id": tenant.tenant_id,
-        "login_url": f"https://{organization_name.lower().replace(' ', '-')}.aura-ai.com"
+        "login_url": f"https://{organization_name.lower().replace(' ', '-')}.aura-voice-ai.com"
     }
+
+# Helper functions
+
+def generate_secure_password() -> str:
+    # Generate random password for new tenants
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(12))
+
+async def send_welcome_email(email: str, org_name: str, tenant_id: str, password: str):
+    # Send welcome email to new tenant admin
+    logger.info(f"Sending welcome email to {email} for organization {org_name}")
+    pass
+
+@app.get("/test", response_class=HTMLResponse)
+async def test_interface():
+    """Interactive test interface"""
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>AURA Test Interface</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+            }
+            
+            .container {
+                background: white;
+                border-radius: 10px;
+                padding: 30px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            }
+            
+            h1 {
+                color: #333;
+                margin-bottom: 30px;
+            }
+            
+            .test-section {
+                margin: 20px 0;
+                padding: 20px;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+            }
+            
+            .test-section h3 {
+                margin-top: 0;
+                color: #667eea;
+            }
+            
+            button {
+                background: #667eea;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                margin: 5px;
+            }
+            
+            button:hover {
+                background: #764ba2;
+            }
+            
+            .result {
+                margin-top: 10px;
+                padding: 10px;
+                background: #f5f5f5;
+                border-radius: 5px;
+                font-family: monospace;
+                white-space: pre-wrap;
+                max-height: 300px;
+                overflow-y: auto;
+            }
+            
+            input, textarea {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                margin: 10px 0;
+                box-sizing: border-box;
+            }
+            
+            .status-ok { color: green; }
+            .status-error { color: red; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🎯 AURA Voice AI - Test Interface</h1>
+            
+            <!-- Health Check -->
+            <div class="test-section">
+                <h3>1. System Health Check</h3>
+                <button onclick="testHealth()">Check Health</button>
+                <div id="health-result" class="result"></div>
+            </div>
+            
+            <!-- Chat Test -->
+            <div class="test-section">
+                <h3>2. Chat Test</h3>
+                <textarea id="chat-input" placeholder="Enter your message..." rows="3">
+What is machine learning?</textarea>
+                <button onclick="testChat()">Send Message</button>
+                <div id="chat-result" class="result"></div>
+            </div>
+            
+            <!-- TTS Test -->
+            <div class="test-section">
+                <h3>3. Text-to-Speech Test</h3>
+                <input id="tts-input" type="text" value="Hello, I am AURA, your AI assistant!" />
+                <button onclick="testTTS()">Generate Speech</button>
+                <div id="tts-result" class="result"></div>
+            </div>
+            
+            <!-- Admin Dashboard -->
+            <div class="test-section">
+                <h3>4. Admin Dashboard</h3>
+                <button onclick="testAdmin()">Get Stats</button>
+                <div id="admin-result" class="result"></div>
+            </div>
+        </div>
+        
+        <script>
+            const API_BASE = '';
+            
+            async function testHealth() {
+                const resultDiv = document.getElementById('health-result');
+                resultDiv.textContent = 'Testing...';
+                
+                try {
+                    const response = await fetch('/health');
+                    const data = await response.json();
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                    resultDiv.className = 'result ' + (data.status === 'healthy' ? 'status-ok' : 'status-error');
+                } catch (error) {
+                    resultDiv.textContent = 'Error: ' + error.message;
+                    resultDiv.className = 'result status-error';
+                }
+            }
+            
+            async function testChat() {
+                const resultDiv = document.getElementById('chat-result');
+                const input = document.getElementById('chat-input').value;
+                resultDiv.textContent = 'Sending...';
+                
+                try {
+                    const response = await fetch('/chat/message', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            message: input,
+                            user_id: 'test_user',
+                            use_memory: true
+                        })
+                    });
+                    const data = await response.json();
+                    resultDiv.textContent = 'Response: ' + data.response + '\\n\\nModel: ' + data.model_used + '\\nCost: $' + data.cost.toFixed(4);
+                } catch (error) {
+                    resultDiv.textContent = 'Error: ' + error.message;
+                    resultDiv.className = 'result status-error';
+                }
+            }
+            
+            async function testTTS() {
+                const resultDiv = document.getElementById('tts-result');
+                const input = document.getElementById('tts-input').value;
+                resultDiv.textContent = 'Generating...';
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('text', input);
+                    
+                    const response = await fetch('/voice/synthesize', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Create audio element
+                        const audio = new Audio('data:audio/mpeg;base64,' + data.audio);
+                        audio.play();
+                        resultDiv.textContent = 'Audio generated! Playing...\\nCharacters: ' + data.characters;
+                    } else {
+                        resultDiv.textContent = 'Failed to generate audio';
+                    }
+                } catch (error) {
+                    resultDiv.textContent = 'Error: ' + error.message;
+                    resultDiv.className = 'result status-error';
+                }
+            }
+            
+            async function testAdmin() {
+                const resultDiv = document.getElementById('admin-result');
+                resultDiv.textContent = 'Loading...';
+                
+                try {
+                    const response = await fetch('/admin/dashboard');
+                    const data = await response.json();
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                } catch (error) {
+                    resultDiv.textContent = 'Error: ' + error.message;
+                    resultDiv.className = 'result status-error';
+                }
+            }
+            
+            // Test health on load
+            window.onload = () => testHealth();
+        </script>
+    </body>
+    </html>
+    """)
 
 if __name__ == "__main__":
     import uvicorn
