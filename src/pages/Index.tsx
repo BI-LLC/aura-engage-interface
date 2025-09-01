@@ -25,11 +25,18 @@ export default function Index() {
             </div>
             <span className="font-bold text-xl">Aura</span>
           </div>
-          <Link to="/train">
-            <Button variant="outline" size="sm">
-              Admin Panel
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/auth">
+              <Button variant="outline" size="sm">
+                Sign In
+              </Button>
+            </Link>
+            <Link to="/train">
+              <Button variant="outline" size="sm">
+                Admin Panel
+              </Button>
+            </Link>
+          </div>
         </div>
       </nav>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Edit, Trash2, Save, X, Tag } from "lucide-react";
+import { Plus, Edit, Trash2, Save, X, Tag, LogOut, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface TrainingData {
   id: string;
@@ -32,7 +33,17 @@ export default function TrainPage() {
     tags: [] as string[]
   });
   const [tagInput, setTagInput] = useState("");
+  
+  const { user, isAdmin, signOut, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Redirect if not authenticated or not admin
+  useEffect(() => {
+    if (!authLoading && (!user || !isAdmin)) {
+      navigate('/auth');
+    }
+  }, [user, isAdmin, authLoading, navigate]);
 
   useEffect(() => {
     fetchTrainingData();
@@ -159,12 +170,32 @@ export default function TrainPage() {
     }));
   };
 
-  if (loading) {
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to sign out",
+        variant: "destructive"
+      });
+    } else {
+      navigate('/auth');
+    }
+  };
+
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading training data...</div>
+        <div className="animate-pulse text-muted-foreground">
+          {authLoading ? "Checking authentication..." : "Loading training data..."}
+        </div>
       </div>
     );
+  }
+
+  // Don't render if not authenticated or not admin
+  if (!user || !isAdmin) {
+    return null;
   }
 
   return (
@@ -184,13 +215,27 @@ export default function TrainPage() {
                 <span className="font-bold text-xl">Aura</span>
               </Link>
               <div className="border-l pl-4">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-                  AI Training Dashboard
-                </h1>
-                <p className="text-muted-foreground mt-2">
-                  Manage Aura's knowledge base and training responses
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="w-5 h-5 text-primary" />
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
+                    AI Training Dashboard
+                  </h1>
+                </div>
+                <p className="text-muted-foreground">
+                  Secure admin access • Manage Aura's knowledge base and training responses
                 </p>
               </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-xs">
+                <Shield className="w-3 h-3 mr-1" />
+                Admin Access
+              </Badge>
+              <Button variant="outline" onClick={handleSignOut}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
