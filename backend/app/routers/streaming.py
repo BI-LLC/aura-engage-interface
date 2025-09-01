@@ -25,13 +25,16 @@ smart_router = None
 voice_pipeline = None
 memory_engine = None
 
-def set_services(sh: StreamingHandler, sr: SmartRouter, vp: VoicePipeline, me: MemoryEngine):
+def set_services(sr, vp, me):  # REMOVED TYPE HINTS, matches main.py call pattern
     """Set service instances from main app"""
     global streaming_handler, smart_router, voice_pipeline, memory_engine
-    streaming_handler = sh
     smart_router = sr
     voice_pipeline = vp
     memory_engine = me
+    
+    # Initialize StreamingHandler with voice_pipeline
+    from app.services.streaming_handler import StreamingHandler
+    streaming_handler = StreamingHandler(voice_pipeline)
 
 @router.websocket("/voice")
 async def websocket_voice_stream(websocket: WebSocket):

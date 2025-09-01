@@ -15,8 +15,9 @@ logger = logging.getLogger(__name__)
 class FineTuner:
     def __init__(self):
         """Initialize fine-tuning service"""
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.grok_api_key = os.getenv("GROK_API_KEY", "")
+        from app.config import settings
+        self.openai_api_key = settings.OPENAI_API_KEY
+        self.grok_api_key = settings.GROK_API_KEY
         
         # Track fine-tuning jobs
         self.active_jobs = {}

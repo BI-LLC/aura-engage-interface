@@ -4,7 +4,7 @@ Note: `services.smart_router` defines its own dataclass `LLMResponse` for
 internal routing responses; the names overlap but are not interchanged.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -14,6 +14,8 @@ class ChatMessage(BaseModel):
     timestamp: datetime = datetime.now()
 
 class LLMResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    
     content: str
     model_used: str
     response_time: float

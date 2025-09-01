@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA Admin - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dashboard">
+    <div class="dashboard-header">
+        <div class="header-content">
+            <h1>🎤 AURA Admin Dashboard</h1>
+            <p>Manage documents, monitor system, and configure voice AI</p>
+        </div>
+        <button id="logoutBtn" class="btn-logout">Logout</button>
+    </div>
+
+    <div class="dashboard-content">
+        <!-- System Status -->
+        <div class="status-section">
+            <h2>System Status</h2>
+            <div class="status-grid">
+                <div class="status-card">
+                    <div class="status-icon">🟢</div>
+                    <div class="status-info">
+                        <h3>Backend</h3>
+                        <p id="backendStatus">Checking...</p>
+                    </div>
+                </div>
+                <div class="status-card">
+                    <div class="status-icon">🎤</div>
+                    <div class="status-info">
+                        <h3>Voice Service</h3>
+                        <p id="voiceStatus">Checking...</p>
+                    </div>
+                </div>
+                <div class="status-card">
+                    <div class="status-icon">📊</div>
+                    <div class="status-info">
+                        <h3>Active Calls</h3>
+                        <p id="activeCalls">0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Upload -->
+        <div class="upload-section">
+            <h2>Document Management</h2>
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <h3>Upload Documents</h3>
+                <p>Drag & drop files here or click to browse</p>
+                <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.txt" style="display: none;">
+            </div>
+            
+            <div class="file-list" id="fileList">
+                <div class="loading">Loading documents...</div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="actions-section">
+            <h2>Quick Actions</h2>
+            <div class="action-buttons">
+                <button class="btn-action" onclick="testVoiceCall()">
+                    🎤 Test Voice Call
+                </button>
+                <button class="btn-action" onclick="refreshStatus()">
+                    🔄 Refresh Status
+                </button>
+                <button class="btn-action" onclick="exportData()">
+                    📤 Export Data
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast" style="display: none;"></div>
+
+    <script src="../shared/api.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

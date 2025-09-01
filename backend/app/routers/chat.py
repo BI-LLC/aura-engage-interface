@@ -2,7 +2,7 @@
 # Handles conversations with personalization and knowledge search
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict
 import logging
 import uuid
@@ -34,6 +34,8 @@ class ChatRequest(BaseModel):
     search_knowledge: bool = True
 
 class ChatResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())  # Fix Pydantic warning
+    
     response: str
     session_id: str
     model_used: str

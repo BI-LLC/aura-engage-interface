@@ -66,7 +66,8 @@ class DocumentProcessor:
         self.embeddings_dir.mkdir(parents=True, exist_ok=True)
         
         # OpenAI for embeddings (reuse existing key)
-        self.openai_key = os.getenv("OPENAI_API_KEY", "")
+        from app.config import settings
+        self.openai_key = settings.OPENAI_API_KEY
         if self.openai_key:
             openai.api_key = self.openai_key
         

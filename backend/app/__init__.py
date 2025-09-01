@@ -1,6 +1,4 @@
-# AURA Voice AI - Main Application Package
-"""AURA Voice AI - Multi-tenant voice assistant platform"""
-
+# backend/app/__init__.py
+"""AURA Voice AI - Main Application Package"""
 __version__ = "4.0.0"
-__author__ = "AURA Voice AI Team"
-__description__ = "Multi-tenant voice-enabled AI assistant platform"
+__author__ = "AURA Team"

@@ -19,14 +19,78 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 # Initialize services (will be injected from main)
-data_service = DataIngestionService()
-persona_manager = PersonaManager()
+data_service = None
+persona_manager = None
+smart_router = None
 memory_engine = None
+voice_pipeline = None
 
-def set_services(me: MemoryEngine):
+def set_services(sr, me, vp):  # REMOVED TYPE HINTS to avoid circular imports
     """Set service instances from main app"""
-    global memory_engine
+    global smart_router, memory_engine, voice_pipeline, data_service, persona_manager
+    smart_router = sr
     memory_engine = me
+    voice_pipeline = vp
+    
+    # Initialize the services that aren't passed in
+    from app.services.data_ingestion import DataIngestionService
+    from app.services.persona_manager import PersonaManager
+    data_service = DataIngestionService()
+    persona_manager = PersonaManager()
+
+@router.get("/status")
+async def admin_status():
+    """Get admin system status - ALWAYS RETURN JSON"""
+    try:
+        service_health = {}
+        
+        # Safe health checks with error handling
+        if smart_router:
+            try:
+                service_health["smart_router"] = await smart_router.get_health_status()
+            except Exception as e:
+                service_health["smart_router"] = {"error": str(e)}
+        
+        if memory_engine:
+            try:
+                service_health["memory"] = {"connected": memory_engine.connected}
+            except Exception as e:
+                service_health["memory"] = {"error": str(e)}
+        
+        if voice_pipeline:
+            try:
+                service_health["voice"] = voice_pipeline.get_pipeline_status()
+            except Exception as e:
+                service_health["voice"] = {"error": str(e)}
+        
+        return {
+            "admin": "operational",
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "smart_router": smart_router is not None,
+                "memory_engine": memory_engine is not None,
+                "voice_pipeline": voice_pipeline is not None,
+                "data_service": data_service is not None,
+                "persona_manager": persona_manager is not None
+            },
+            "service_health": service_health
+        }
+        
+    except Exception as e:
+        # ALWAYS return JSON structure
+        return {
+            "admin": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+            "services": {
+                "smart_router": False,
+                "memory_engine": False,
+                "voice_pipeline": False,
+                "data_service": False,
+                "persona_manager": False
+            },
+            "service_health": {}
+        }
 
 @router.get("/")
 async def admin_dashboard():

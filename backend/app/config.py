@@ -5,9 +5,28 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
-# Force load .env file from current directory
-load_dotenv(verbose=True)
+# Try to find .env file in multiple locations
+env_paths = [
+    Path(".env"),  # Current directory
+    Path("backend/.env"),  # Backend directory
+    Path("../backend/.env"),  # Parent/backend
+    Path("../../backend/.env"),  # Grandparent/backend
+    Path(__file__).parent / ".env",  # Same as config.py
+    Path(__file__).parent.parent / ".env",  # Backend root
+]
+
+env_loaded = False
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(env_path, verbose=True)
+        print(f"✅ Loaded .env from: {env_path.absolute()}")
+        env_loaded = True
+        break
+
+if not env_loaded:
+    print("⚠️ No .env file found, using environment variables only")
 
 class Settings(BaseSettings):
     # Simple configuration - use .env file for secrets

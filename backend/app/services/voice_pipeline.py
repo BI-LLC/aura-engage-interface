@@ -32,15 +32,25 @@ class AudioSynthesis:
 
 class VoicePipeline:
     def __init__(self):
-        # Get our API keys from environment variables
+        # Try to load from multiple .env locations
+        from dotenv import load_dotenv
+        import os
+        from pathlib import Path
+        
+        # Try different .env file locations
+        env_paths = [Path('.env'), Path('../.env'), Path('../../.env'), Path('backend/.env')]
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(env_path)
+                break
+        
+        # Initialize with API keys from environment
         self.openai_key = os.getenv("OPENAI_API_KEY", "")
         self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
-        
-        # Voice synthesis configuration
-        self.elevenlabs_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel voice default
+        self.elevenlabs_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.elevenlabs_model = "eleven_monolingual_v1"
         
-        # Check if we have the keys we need
+        # Validate API keys
         self.whisper_available = bool(self.openai_key)
         self.elevenlabs_available = bool(self.elevenlabs_key)
         
