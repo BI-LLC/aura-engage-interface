@@ -44,7 +44,7 @@ export default function Index() {
             
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
               Meet{" "}
-              <span className="gradient-primary bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
                 Aura
               </span>
               <br />

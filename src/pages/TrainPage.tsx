@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -172,13 +173,24 @@ export default function TrainPage() {
         <div className="max-w-6xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-                AI Training Dashboard
-              </h1>
-              <p className="text-muted-foreground mt-2">
-                Manage Aura's knowledge base and training responses
-              </p>
+            <div className="flex items-center gap-4">
+              <Link 
+                to="/" 
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-smooth"
+              >
+                <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center">
+                  <span className="text-primary-foreground font-bold">A</span>
+                </div>
+                <span className="font-bold text-xl">Aura</span>
+              </Link>
+              <div className="border-l pl-4">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
+                  AI Training Dashboard
+                </h1>
+                <p className="text-muted-foreground mt-2">
+                  Manage Aura's knowledge base and training responses
+                </p>
+              </div>
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -306,6 +318,52 @@ export default function TrainPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Embed Widget Section */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Embed Widget</CardTitle>
+              <p className="text-muted-foreground">
+                Copy this code snippet to embed the Aura voice widget on your website
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-muted p-4 rounded-lg">
+                <code className="text-sm text-muted-foreground block whitespace-pre-wrap">
+{`<!-- Aura Voice AI Widget -->
+<div id="aura-widget"></div>
+<script>
+  (function() {
+    var script = document.createElement('script');
+    script.src = '${window.location.origin}/widget.js';
+    script.async = true;
+    document.head.appendChild(script);
+  })();
+</script>`}
+                </code>
+              </div>
+              <Button 
+                variant="outline" 
+                className="mt-4" 
+                onClick={() => {
+                  const code = `<!-- Aura Voice AI Widget -->
+<div id="aura-widget"></div>
+<script>
+  (function() {
+    var script = document.createElement('script');
+    script.src = '${window.location.origin}/widget.js';
+    script.async = true;
+    document.head.appendChild(script);
+  })();
+</script>`;
+                  navigator.clipboard.writeText(code);
+                  toast({ title: "Copied!", description: "Widget code copied to clipboard" });
+                }}
+              >
+                Copy Code
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* Training Data Table */}
           <Card>
