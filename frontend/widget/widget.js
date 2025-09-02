@@ -41,7 +41,7 @@ class VoiceWidget {
             
             // Connect WebSocket with token
             const token = localStorage.getItem('aura_token') || 'demo_token';
-            this.websocket = new WebSocket(`ws://localhost:8080/ws/voice/continuous?token=${token}`);
+            this.websocket = new WebSocket(`ws://localhost:8000/ws/voice/continuous?token=${token}`);
             
             this.websocket.onopen = () => {
                 this.isCallActive = true;
@@ -95,7 +95,7 @@ class VoiceWidget {
                 int16Array[i] = inputData[i] * 32767;
             }
             
-            // Send audio data via WebSocket
+            // Send binary audio data directly via WebSocket
             if (this.websocket.readyState === WebSocket.OPEN) {
                 this.websocket.send(int16Array.buffer);
             }
@@ -113,13 +113,43 @@ class VoiceWidget {
             const message = JSON.parse(data);
             console.log('📨 Received message:', message);
             
-            if (message.type === 'transcript') {
-                this.addToTranscript('ai', message.text);
-            } else if (message.type === 'audio') {
-                // Play received audio
-                this.playAudio(message.audio);
-            } else if (message.type === 'error') {
-                this.showToast('Error: ' + message.text, 'error');
+            switch (message.type) {
+                case 'greeting':
+                    this.addToTranscript('ai', message.text);
+                    if (message.audio) {
+                        this.playAudio(message.audio);
+                    }
+                    break;
+                    
+                case 'user_transcript':
+                    this.addToTranscript('user', message.text);
+                    break;
+                    
+                case 'ai_audio':
+                    this.addToTranscript('ai', message.text);
+                    if (message.audio) {
+                        this.playAudio(message.audio);
+                    }
+                    break;
+                    
+                case 'ai_complete':
+                    console.log('AI response complete:', message.full_response);
+                    break;
+                    
+                case 'ai_interrupted':
+                    console.log('AI was interrupted by user');
+                    break;
+                    
+                case 'pong':
+                    // Keepalive response
+                    break;
+                    
+                case 'error':
+                    this.showToast('Error: ' + message.message, 'error');
+                    break;
+                    
+                default:
+                    console.log('Unknown message type:', message.type);
             }
         } catch (error) {
             console.error('Failed to parse message:', error);
@@ -128,29 +158,31 @@ class VoiceWidget {
 
     playAudio(audioBase64) {
         try {
-            // Decode base64 audio
+            // Convert base64 to audio blob
             const audioData = atob(audioBase64);
             const audioArray = new Uint8Array(audioData.length);
             for (let i = 0; i < audioData.length; i++) {
                 audioArray[i] = audioData.charCodeAt(i);
             }
             
-            // Create audio blob and play
-            const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+            const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
             const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
             
+            // Create and play audio
+            const audio = new Audio(audioUrl);
             audio.onended = () => {
                 URL.revokeObjectURL(audioUrl);
+                this.updateStatus('Ready for next input');
             };
             
             audio.play().catch(error => {
-                console.error('Audio playback failed:', error);
+                console.error('Failed to play audio:', error);
+                this.updateStatus('Audio playback failed');
             });
             
-            console.log('🔊 Playing audio response');
         } catch (error) {
-            console.error('Audio playback error:', error);
+            console.error('Error playing audio:', error);
+            this.updateStatus('Audio playback error');
         }
     }
 
@@ -167,6 +199,13 @@ class VoiceWidget {
         this.isCallActive = false;
         
         if (this.websocket) {
+            // Send end call message before closing
+            try {
+                this.websocket.send(JSON.stringify({ type: 'end_call' }));
+            } catch (e) {
+                console.log('Could not send end call message');
+            }
+            
             this.websocket.close();
             this.websocket = null;
         }
@@ -247,6 +286,22 @@ class VoiceWidget {
         toast.className = `toast toast-${type}`;
         toast.style.display = 'block';
         setTimeout(() => toast.style.display = 'none', 3000);
+    }
+
+    updateStatus(status) {
+        const statusDiv = document.getElementById('status');
+        if (statusDiv) {
+            statusDiv.textContent = status;
+        }
+        console.log('Status:', status);
+    }
+    
+    showTranscript(text) {
+        const transcriptDiv = document.getElementById('transcript');
+        if (transcriptDiv) {
+            transcriptDiv.innerHTML = text;
+            transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+        }
     }
 }
 

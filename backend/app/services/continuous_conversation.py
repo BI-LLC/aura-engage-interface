@@ -9,6 +9,8 @@ from typing import AsyncGenerator, Optional, Dict, List
 from datetime import datetime
 import json
 import time
+from .enhanced_voice_activity_detector import create_voice_activity_detector
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +21,17 @@ class ContinuousConversationManager:
         smart_router,
         tenant_manager=None
     ):
-        """Initialize continuous conversation system"""
+        """Initialize continuous conversation system with enhanced VAD"""
         self.voice_pipeline = voice_pipeline
         self.smart_router = smart_router
         self.tenant_manager = tenant_manager
-        self.vad = VoiceActivityDetector()
+        
+        # Initialize enhanced VAD
+        self.vad = create_voice_activity_detector(
+            sample_rate=16000,
+            adaptive=True,
+            aggressiveness=2
+        )
         
         # Conversation state
         self.active_sessions = {}
@@ -32,7 +40,7 @@ class ContinuousConversationManager:
         self.allow_interruptions = True
         self.ai_speaking = False
         
-        logger.info("Continuous conversation manager initialized")
+        logger.info("Continuous conversation manager initialized with enhanced VAD")
     
     async def start_continuous_session(
         self,
@@ -103,64 +111,137 @@ class ContinuousConversationManager:
         """
         while True:
             try:
-                # Receive audio chunk
-                data = await websocket.receive_json()
+                # Receive data (could be JSON or binary)
+                data = await websocket.receive()
                 
-                if data["type"] == "audio_chunk":
-                    # Add to buffer for processing
-                    audio_bytes = data["audio"]
+                if "bytes" in data:
+                    # Binary audio data from frontend
+                    audio_bytes = data["bytes"]
                     session["audio_buffer"].append(audio_bytes)
                     session["last_activity"] = time.time()
+                    logger.debug(f"Received {len(audio_bytes)} bytes of audio")
                     
-                elif data["type"] == "end_call":
-                    logger.info("User ended call")
-                    break
-                    
+                elif "text" in data:
+                    # Text message (JSON)
+                    try:
+                        message = json.loads(data["text"])
+                        if message.get("type") == "end_call":
+                            logger.info("User ended call")
+                            break
+                        elif message.get("type") == "ping":
+                            # Keepalive ping
+                            await websocket.send_json({"type": "pong"})
+                    except json.JSONDecodeError:
+                        logger.warning("Invalid JSON received")
+                        
             except Exception as e:
                 logger.error(f"Receive error: {e}")
                 break
     
-    async def _process_audio_stream(self, websocket, session: Dict):
-        """
-        Process audio buffer and handle conversation
-        """
-        while True:
-            try:
-                # Check if we have audio to process
-                if session["audio_buffer"] and not session["is_ai_speaking"]:
-                    # Get audio chunk
-                    audio_chunk = session["audio_buffer"].pop(0)
-                    
-                    # Detect voice activity
-                    is_speaking, speech_complete, complete_audio = self.vad.process_audio_chunk(
-                        audio_chunk
-                    )
-                    
-                    if speech_complete and complete_audio:
-                        # User finished speaking - process their input
-                        await self._handle_user_speech(
-                            websocket,
-                            session,
-                            complete_audio
-                        )
-                    
-                    elif is_speaking:
-                        # User is still speaking
-                        # If AI is talking, handle interruption
-                        if session["is_ai_speaking"] and self.allow_interruptions:
-                            await self._handle_interruption(websocket, session)
+    async def _process_audio_stream(self, websocket: WebSocket, session: Dict):
+        """Process accumulated audio and generate AI response"""
+        try:
+            # Get accumulated audio
+            audio_chunks = session["audio_buffer"]
+            if not audio_chunks:
+                return
+            
+            # Combine audio chunks
+            combined_audio = b''.join(audio_chunks)
+            session["audio_buffer"] = []  # Clear buffer
+            
+            logger.info(f"Processing {len(combined_audio)} bytes of audio")
+            
+            # Step 1: Transcribe audio to text
+            transcription = await self.voice_pipeline.transcribe_audio(combined_audio, "raw")
+            if not transcription.text.strip():
+                logger.info("No speech detected, skipping response")
+                return
+            
+            user_text = transcription.text.strip()
+            logger.info(f"User said: {user_text}")
+            
+            # Send user transcript to frontend
+            await websocket.send_json({
+                "type": "user_transcript",
+                "text": user_text
+            })
+            
+            # Step 2: Generate AI response using streaming LLM
+            logger.info("Generating AI response...")
+            
+            # Prepare user context for personalization
+            user_context = {
+                "conversation_history": session.get("conversation_history", []),
+                "persona": session.get("persona", "neutral")
+            }
+            
+            # Stream AI response token by token
+            full_response = ""
+            async for chunk in self.smart_router.route_message_stream(user_text, user_context):
+                full_response += chunk
                 
-                # Small delay to prevent CPU spinning
-                await asyncio.sleep(0.01)
+                # Send chunk to frontend for real-time display
+                await websocket.send_json({
+                    "type": "ai_chunk",
+                    "text": chunk
+                })
                 
-                # Check for timeout (no activity for 30 seconds)
-                if time.time() - session["last_activity"] > 30:
-                    await self._send_keepalive(websocket)
-                    session["last_activity"] = time.time()
+                # Small delay to simulate natural speech flow
+                await asyncio.sleep(0.05)
+            
+            # Step 3: Convert AI response to speech
+            if full_response.strip():
+                logger.info(f"AI response: {full_response[:100]}...")
+                
+                # Send completion signal
+                await websocket.send_json({
+                    "type": "ai_complete",
+                    "text": full_response
+                })
+                
+                # Synthesize speech
+                synthesis = await self.voice_pipeline.synthesize_speech(full_response)
+                
+                if synthesis.audio_base64:
+                    # Send audio to frontend
+                    await websocket.send_json({
+                        "type": "ai_audio",
+                        "audio": synthesis.audio_base64,
+                        "duration": synthesis.duration
+                    })
                     
-            except Exception as e:
-                logger.error(f"Process error: {e}")
-                break
+                    logger.info(f"Audio synthesized: {synthesis.duration:.2f}s")
+                    
+                    # Update conversation history
+                    session["conversation_history"].append({
+                        "user": user_text,
+                        "ai": full_response,
+                        "timestamp": time.time()
+                    })
+                    
+                    # Keep only last 10 exchanges
+                    if len(session["conversation_history"]) > 10:
+                        session["conversation_history"] = session["conversation_history"][-10:]
+                else:
+                    logger.error("Failed to synthesize speech")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Failed to generate speech"
+                    })
+            else:
+                logger.warning("No AI response generated")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "No response generated"
+                })
+                
+        except Exception as e:
+            logger.error(f"Error processing audio stream: {e}")
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Processing error: {str(e)}"
+            })
     
     async def _handle_user_speech(
         self,

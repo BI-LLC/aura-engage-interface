@@ -1,224 +1,178 @@
-# Persona Manager for AURA Voice AI
-# Dynamic persona adaptation based on user preferences
+"""
+Persona Manager Service
 
-import json
+Handles user communication style preferences and personalization.
+Adapts AI responses based on user feedback and preferences.
+"""
+
 import logging
-from typing import Dict, Optional, List
-from dataclasses import dataclass, asdict
-from datetime import datetime
-import random
+from typing import Dict, Optional, Any
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 @dataclass
-class PersonaProfile:
-    """User's preferred communication style"""
-    formality: str = "balanced"  # casual, balanced, professional
-    detail_level: str = "normal"  # brief, normal, detailed
-    example_style: str = "mixed"  # abstract, concrete, mixed
-    questioning: str = "direct"  # direct, socratic, exploratory
-    energy: str = "moderate"  # calm, moderate, enthusiastic
-    confidence: float = 0.8  # Confidence in persona accuracy
+class PersonaSettings:
+    """User persona settings for communication style"""
+    formality: str = "neutral"  # formal, neutral, casual
+    detail_level: str = "medium"  # low, medium, high
+    example_style: str = "practical"  # practical, theoretical, story-based
+    energy: str = "balanced"  # low, balanced, high
+    last_updated: datetime = None
+    
+    def __post_init__(self):
+        if self.last_updated is None:
+            self.last_updated = datetime.now()
 
 class PersonaManager:
-    def __init__(self):
-        """Initialize persona management system"""
-        self.personas = {}  # User ID -> PersonaProfile
-        self.ab_tests = {}  # Track A/B testing results
-        self.engagement_metrics = {}  # Track user engagement
-        
-        # Default persona templates
-        self.templates = {
-            "professional": {
-                "system_prompt": "Respond in a professional, clear manner. Use industry terminology where appropriate.",
-                "formality": "professional",
-                "detail_level": "detailed"
-            },
-            "casual": {
-                "system_prompt": "Be friendly and conversational. Use simple language and relatable examples.",
-                "formality": "casual", 
-                "detail_level": "brief"
-            },
-            "technical": {
-                "system_prompt": "Provide technical depth. Include implementation details and best practices.",
-                "formality": "balanced",
-                "detail_level": "detailed"
-            }
-        }
-        
-        logger.info("Persona Manager initialized")
+    """Manages user communication style preferences and learning"""
     
-    async def get_persona(self, user_id: str) -> PersonaProfile:
-        """Get or create persona for user"""
-        if user_id not in self.personas:
-            # Create default persona
-            self.personas[user_id] = PersonaProfile()
-            logger.info(f"Created default persona for user {user_id}")
+    def __init__(self):
+        self.personas: Dict[str, PersonaSettings] = {}
+        self.feedback_history: Dict[str, list] = {}
+        self.learning_rate = 0.1
         
+    async def get_persona_stats(self, user_id: str) -> Optional[PersonaSettings]:
+        """Get persona settings for a user"""
+        if user_id not in self.personas:
+            # Return default persona for new users
+            return PersonaSettings()
         return self.personas[user_id]
     
-    async def update_persona(
-        self,
-        user_id: str,
-        feedback: Dict[str, any]
-    ) -> PersonaProfile:
-        """Update persona based on user feedback"""
-        persona = await self.get_persona(user_id)
-        
-        # Track engagement metrics
-        if user_id not in self.engagement_metrics:
-            self.engagement_metrics[user_id] = {
-                "sessions": 0,
-                "avg_duration": 0,
-                "satisfaction": []
-            }
-        
-        metrics = self.engagement_metrics[user_id]
-        metrics["sessions"] += 1
-        
-        # Update based on feedback signals
-        if feedback.get("conversation_length", 0) > 5:  # Long conversation
-            # User prefers detailed responses
-            persona.detail_level = "detailed"
-            persona.confidence = min(1.0, persona.confidence + 0.05)
-        
-        if feedback.get("follow_up_questions", 0) > 2:
-            # User likes exploratory conversation
-            persona.questioning = "exploratory"
-        
-        if feedback.get("requested_examples", False):
-            # User prefers concrete examples
-            persona.example_style = "concrete"
-        
-        # A/B test different styles
-        if random.random() < 0.1:  # 10% chance to test
-            await self._run_ab_test(user_id, persona)
-        
-        logger.info(f"Updated persona for user {user_id}: {asdict(persona)}")
+    async def set_manual_persona(self, user_id: str, settings: Dict[str, str]) -> PersonaSettings:
+        """Set persona settings manually"""
+        persona = PersonaSettings(
+            formality=settings.get("formality", "neutral"),
+            detail_level=settings.get("detail_level", "medium"),
+            example_style=settings.get("example_style", "practical"),
+            energy=settings.get("energy", "balanced")
+        )
+        self.personas[user_id] = persona
+        logger.info(f"Set manual persona for user {user_id}: {settings}")
         return persona
     
-    async def _run_ab_test(self, user_id: str, current_persona: PersonaProfile):
-        """Run A/B test with slightly different persona"""
-        if user_id not in self.ab_tests:
-            self.ab_tests[user_id] = {
-                "tests_run": 0,
-                "variations_tested": []
-            }
+    async def apply_persona_to_message(self, message: str, user_id: str) -> str:
+        """Apply persona settings to enhance a message"""
+        persona = await self.get_persona_stats(user_id)
+        if not persona:
+            return message
+            
+        enhanced_message = message
         
-        # Create variation
-        test_persona = PersonaProfile(
-            formality=current_persona.formality,
-            detail_level=current_persona.detail_level,
-            example_style=current_persona.example_style,
-            questioning=current_persona.questioning,
-            energy=current_persona.energy
-        )
-        
-        # Vary one attribute
-        variations = ["formality", "detail_level", "energy"]
-        test_attribute = random.choice(variations)
-        
-        if test_attribute == "formality":
-            options = ["casual", "balanced", "professional"]
-            test_persona.formality = random.choice(
-                [o for o in options if o != current_persona.formality]
-            )
-        
-        self.ab_tests[user_id]["tests_run"] += 1
-        logger.info(f"Running A/B test for user {user_id}, testing {test_attribute}")
-    
-    def generate_system_prompt(self, persona: PersonaProfile) -> str:
-        """Generate LLM system prompt based on persona"""
-        prompts = []
-        
-        # Formality
-        if persona.formality == "casual":
-            prompts.append("Be conversational and friendly. Use 'let's' and 'we' language.")
-        elif persona.formality == "professional":
-            prompts.append("Maintain professional tone. Use formal language.")
-        
-        # Detail level
-        if persona.detail_level == "brief":
-            prompts.append("Keep responses concise. Focus on key points.")
-        elif persona.detail_level == "detailed":
-            prompts.append("Provide comprehensive explanations with examples.")
-        
-        # Example style
-        if persona.example_style == "concrete":
-            prompts.append("Use real-world, practical examples.")
-        elif persona.example_style == "abstract":
-            prompts.append("Use conceptual and theoretical examples.")
-        
-        # Energy level
-        if persona.energy == "enthusiastic":
-            prompts.append("Show enthusiasm and energy in responses!")
-        elif persona.energy == "calm":
-            prompts.append("Maintain calm, measured tone.")
-        
-        return " ".join(prompts)
-    
-    async def apply_persona_to_message(
-        self,
-        message: str,
-        user_id: str
-    ) -> str:
-        """Apply persona styling to message"""
-        persona = await self.get_persona(user_id)
-        system_prompt = self.generate_system_prompt(persona)
-        
-        # Inject persona into message context
-        enhanced_message = f"""
-        [System: {system_prompt}]
-        
-        User message: {message}
-        
-        Respond according to the system instructions above.
-        """
-        
+        # Apply formality
+        if persona.formality == "formal":
+            enhanced_message = self._make_formal(enhanced_message)
+        elif persona.formality == "casual":
+            enhanced_message = self._make_casual(enhanced_message)
+            
+        # Apply detail level
+        if persona.detail_level == "high":
+            enhanced_message = self._add_detail(enhanced_message)
+        elif persona.detail_level == "low":
+            enhanced_message = self._simplify(enhanced_message)
+            
+        # Apply energy
+        if persona.energy == "high":
+            enhanced_message = self._add_enthusiasm(enhanced_message)
+        elif persona.energy == "low":
+            enhanced_message = self._calm_tone(enhanced_message)
+            
         return enhanced_message
     
-    async def get_persona_stats(self, user_id: str) -> Dict:
-        """Get statistics about persona usage"""
+    async def update_persona(self, user_id: str, feedback: Dict[str, Any]) -> None:
+        """Update persona based on user feedback"""
         if user_id not in self.personas:
-            return {"status": "no_persona"}
+            self.personas[user_id] = PersonaSettings()
+            
+        if user_id not in self.feedback_history:
+            self.feedback_history[user_id] = []
+            
+        # Store feedback
+        self.feedback_history[user_id].append({
+            "timestamp": datetime.now(),
+            "feedback": feedback
+        })
         
-        persona = self.personas[user_id]
-        metrics = self.engagement_metrics.get(user_id, {})
-        tests = self.ab_tests.get(user_id, {})
+        # Learn from feedback (simplified learning)
+        if feedback.get("rating") and feedback["rating"] > 3:
+            # Positive feedback - reinforce current style
+            logger.info(f"Positive feedback for user {user_id}, reinforcing persona")
+        elif feedback.get("rating") and feedback["rating"] < 3:
+            # Negative feedback - consider adjusting
+            logger.info(f"Negative feedback for user {user_id}, may adjust persona")
+            
+        # Clean old feedback (keep last 50)
+        if len(self.feedback_history[user_id]) > 50:
+            self.feedback_history[user_id] = self.feedback_history[user_id][-50:]
+    
+    def _make_formal(self, message: str) -> str:
+        """Make message more formal"""
+        # Simple formalization rules
+        replacements = {
+            "don't": "do not",
+            "can't": "cannot",
+            "won't": "will not",
+            "I'm": "I am",
+            "you're": "you are"
+        }
+        for informal, formal in replacements.items():
+            message = message.replace(informal, formal)
+        return message
+    
+    def _make_casual(self, message: str) -> str:
+        """Make message more casual"""
+        # Simple casualization rules
+        replacements = {
+            "do not": "don't",
+            "cannot": "can't",
+            "will not": "won't",
+            "I am": "I'm",
+            "you are": "you're"
+        }
+        for formal, informal in replacements.items():
+            message = message.replace(formal, informal)
+        return message
+    
+    def _add_detail(self, message: str) -> str:
+        """Add more detail to message"""
+        # Simple detail enhancement
+        if "because" not in message.lower():
+            message += " This approach ensures better results and user satisfaction."
+        return message
+    
+    def _simplify(self, message: str) -> str:
+        """Simplify message"""
+        # Simple simplification
+        if len(message) > 100:
+            # Take first sentence if message is long
+            sentences = message.split('.')
+            if sentences:
+                message = sentences[0].strip() + "."
+        return message
+    
+    def _add_enthusiasm(self, message: str) -> str:
+        """Add enthusiasm to message"""
+        if not any(word in message.lower() for word in ["great", "awesome", "excellent", "fantastic"]):
+            message += " This is great!"
+        return message
+    
+    def _calm_tone(self, message: str) -> str:
+        """Calm the tone of message"""
+        # Remove exclamation marks for calmer tone
+        message = message.replace("!", ".")
+        return message
+    
+    async def get_persona_analytics(self, user_id: str) -> Dict[str, Any]:
+        """Get analytics about persona usage and feedback"""
+        if user_id not in self.feedback_history:
+            return {"total_feedback": 0, "average_rating": 0, "style_preferences": {}}
+            
+        feedback = self.feedback_history[user_id]
+        ratings = [f.get("rating", 0) for f in feedback if f.get("rating")]
         
         return {
-            "persona": asdict(persona),
-            "confidence": persona.confidence,
-            "sessions": metrics.get("sessions", 0),
-            "ab_tests_run": tests.get("tests_run", 0),
-            "last_updated": datetime.now().isoformat()
+            "total_feedback": len(feedback),
+            "average_rating": sum(ratings) / len(ratings) if ratings else 0,
+            "style_preferences": self.personas.get(user_id, {}).__dict__ if user_id in self.personas else {}
         }
-    
-    async def reset_persona(self, user_id: str):
-        """Reset user persona to defaults"""
-        self.personas[user_id] = PersonaProfile()
-        logger.info(f"Reset persona for user {user_id}")
-    
-    async def set_manual_persona(
-        self,
-        user_id: str,
-        settings: Dict[str, str]
-    ) -> PersonaProfile:
-        """Manually set persona preferences"""
-        persona = await self.get_persona(user_id)
-        
-        # Update allowed fields
-        if "formality" in settings:
-            persona.formality = settings["formality"]
-        if "detail_level" in settings:
-            persona.detail_level = settings["detail_level"]
-        if "example_style" in settings:
-            persona.example_style = settings["example_style"]
-        if "energy" in settings:
-            persona.energy = settings["energy"]
-        
-        # High confidence for manual settings
-        persona.confidence = 1.0
-        
-        logger.info(f"Manual persona set for user {user_id}: {asdict(persona)}")
-        return persona

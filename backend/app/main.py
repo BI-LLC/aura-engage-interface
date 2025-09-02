@@ -29,14 +29,14 @@ tenant_aware_services = {}
 smart_router = None
 memory_engine = None
 voice_pipeline = None
-persona_manager = None
+
 data_service = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Start up all the multi-tenant services
     global tenant_manager, auth_service, tenant_aware_services
-    global smart_router, memory_engine, voice_pipeline, persona_manager, data_service
+    global smart_router, memory_engine, voice_pipeline, data_service, persona_manager
     
     # PREVENT DUPLICATE INITIALIZATION
     if smart_router is None:  # Only initialize once
@@ -64,14 +64,22 @@ async def lifespan(app: FastAPI):
             from app.services.smart_router import SmartRouter
             from app.services.memory_engine import MemoryEngine
             from app.services.voice_pipeline import VoicePipeline
-            from app.services.persona_manager import PersonaManager
             from app.services.data_ingestion import DataIngestionService
+            from app.services.continuous_conversation import ContinuousConversationManager
+            from app.services.persona_manager import PersonaManager
             
             smart_router = SmartRouter()
             memory_engine = MemoryEngine()
             voice_pipeline = VoicePipeline()
             persona_manager = PersonaManager()
             data_service = DataIngestionService()
+            
+            # Initialize continuous conversation manager
+            conversation_manager = ContinuousConversationManager(
+                voice_pipeline=voice_pipeline,
+                smart_router=smart_router,
+                tenant_manager=tenant_manager
+            )
             
             # Start health monitor
             await smart_router.start_health_monitor()
@@ -83,8 +91,8 @@ async def lifespan(app: FastAPI):
                 chat, voice, admin, memory, streaming, 
                 documents, continuous_voice, tenant_admin
             )
-        
-        # Set services in routers that need them
+            
+            # Set services in routers that need them
             if hasattr(chat, 'set_services'):
                 chat.set_services(smart_router, memory_engine)
             if hasattr(voice, 'set_services'):
@@ -93,6 +101,10 @@ async def lifespan(app: FastAPI):
                 admin.set_services(smart_router, memory_engine, voice_pipeline)
             if hasattr(streaming, 'set_services'):
                 streaming.set_services(smart_router, voice_pipeline, memory_engine)
+            
+            # Set services for continuous voice router
+            if hasattr(continuous_voice, 'set_services'):
+                continuous_voice.set_services(conversation_manager, auth_service)
         
             # Add all routers to app
             app.include_router(chat.router)

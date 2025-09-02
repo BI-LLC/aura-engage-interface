@@ -48,7 +48,23 @@ class SmartRouter:
         # Whether streaming is enabled
         self.streaming_enabled = True
         
+        # Load API keys
+        self._load_api_keys()
+        
         logger.info("Smart Router initialized with streaming support")
+    
+    def _load_api_keys(self):
+        """Load API keys from environment or config"""
+        try:
+            from app.config import settings
+            self.openai_key = getattr(settings, 'OPENAI_API_KEY', None)
+            self.grok_key = getattr(settings, 'GROK_API_KEY', None)
+        except ImportError:
+            import os
+            self.openai_key = os.getenv('OPENAI_API_KEY')
+            self.grok_key = os.getenv('GROK_API_KEY')
+        
+        logger.info(f"API Keys loaded - OpenAI: {'✓' if self.openai_key else '✗'}, Grok: {'✓' if self.grok_key else '✗'}")
     
     async def start_health_monitor(self):
         # Kick off background health checking
@@ -344,6 +360,180 @@ class SmartRouter:
             error="All providers failed"
         )
     
+    async def route_message_stream(self, message: str, user_context: Optional[Dict] = None) -> AsyncGenerator[str, None]:
+        """
+        Stream LLM responses token by token for real-time conversation
+        
+        Args:
+            message: User input message
+            user_context: Optional context information
+            
+        Yields:
+            str: Individual text chunks from the LLM
+        """
+        if not self.streaming_enabled:
+            # Fallback to non-streaming
+            response = await self.route_message(message, user_context)
+            yield response.content
+            return
+        
+        self.total_requests += 1
+        
+        # Determine preferred provider
+        preferred_provider = self._classify_query(message)
+        providers_to_try = ["openai", "grok"] if preferred_provider == "openai" else ["grok", "openai"]
+        
+        for provider in providers_to_try:
+            # Check health and rate limits
+            if not self._is_provider_healthy(provider):
+                continue
+                
+            if not self._check_rate_limit(provider):
+                logger.warning(f"{provider} rate limited, skipping")
+                continue
+            
+            try:
+                logger.info(f"Streaming from {provider}...")
+                
+                if provider == "grok":
+                    async for chunk in self._stream_from_grok(message, user_context):
+                        yield chunk
+                else:
+                    async for chunk in self._stream_from_openai(message, user_context):
+                        yield chunk
+                
+                logger.info(f"Successfully streamed from {provider}")
+                return
+                
+            except Exception as e:
+                logger.error(f"Streaming error from {provider}: {e}")
+                self.error_window.append(datetime.now())
+                continue
+        
+        # All providers failed - yield fallback message
+        logger.error("All streaming providers failed!")
+        yield "I'm sorry, I'm having technical difficulties. Please try again in a moment."
+    
+    async def _stream_from_openai(self, message: str, user_context: Optional[Dict] = None) -> AsyncGenerator[str, None]:
+        """Stream response from OpenAI with proper streaming for voice conversation"""
+        if not self.openai_key:
+            yield "OpenAI API not configured. Please check your API key."
+            return
+        
+        try:
+            # Prepare conversation context for natural voice flow
+            system_prompt = self._get_voice_system_prompt(user_context)
+            
+            # Create OpenAI client with streaming
+            client = openai.OpenAI(api_key=self.openai_key)
+            
+            # Prepare messages for conversation flow
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ]
+            
+            # Stream the response for real-time voice synthesis
+            logger.info(f"Streaming from OpenAI: {message[:50]}...")
+            
+            stream = await asyncio.to_thread(
+                client.chat.completions.create,
+                model="gpt-4o-mini",  # Fast and cost-effective for voice
+                messages=messages,
+                stream=True,
+                max_tokens=150,  # Keep responses concise for voice
+                temperature=0.7,  # Balanced creativity
+                presence_penalty=0.1,  # Slight variety
+                frequency_penalty=0.1   # Reduce repetition
+            )
+            
+            # Stream tokens in real-time
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    yield content
+                    logger.debug(f"OpenAI stream chunk: {content}")
+            
+            logger.info("OpenAI streaming completed")
+            
+        except Exception as e:
+            error_msg = f"OpenAI streaming error: {str(e)}"
+            logger.error(error_msg)
+            yield error_msg
+    
+    async def _stream_from_grok(self, message: str, user_context: Optional[Dict] = None) -> AsyncGenerator[str, None]:
+        """Stream responses from Grok API"""
+        if not self.grok_key:
+            raise Exception("Grok API key not available")
+        
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.grok_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Build request data
+            data = {
+                "messages": [
+                    {"role": "system", "content": "You are AURA, a helpful AI assistant. Respond naturally and conversationally."},
+                    {"role": "user", "content": message}
+                ],
+                "model": "grok-beta",
+                "stream": True,
+                "temperature": 0.7,
+                "max_tokens": 300
+            }
+            
+            # Add context if provided
+            if user_context:
+                context_str = json.dumps(user_context, indent=2)
+                data["messages"].insert(1, {"role": "system", "content": f"Context: {context_str}"})
+            
+            # Make streaming request
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                async with client.stream(
+                    "POST", 
+                    "https://api.x.ai/v1/chat/completions",
+                    headers=headers,
+                    json=data
+                ) as response:
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"Grok API error: {response.status_code}")
+                    
+                    # Process streaming response
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:]  # Remove "data: " prefix
+                            
+                            if data_str.strip() == "[DONE]":
+                                break
+                            
+                            try:
+                                chunk_data = json.loads(data_str)
+                                if chunk_data.get("choices") and len(chunk_data["choices"]) > 0:
+                                    delta = chunk_data["choices"][0].get("delta", {})
+                                    if delta.get("content"):
+                                        yield delta["content"]
+                            except json.JSONDecodeError:
+                                # Skip invalid JSON chunks
+                                continue
+                                
+        except Exception as e:
+            logger.error(f"Grok streaming error: {e}")
+            raise
+    
+    def _is_provider_healthy(self, provider: str) -> bool:
+        """Check if a provider is healthy and available"""
+        health_info = self.api_health.get(provider, {})
+        status = health_info.get("status", "unknown")
+        
+        if status == "unhealthy":
+            return False
+        
+        # If status is unknown, allow it (will be tested)
+        return True
+    
     async def get_health_status(self) -> Dict:
         # Get current health status of all APIs
         five_min_ago = datetime.now() - timedelta(minutes=5)
@@ -378,3 +568,25 @@ class SmartRouter:
     def get_request_count(self) -> int:
         # Get total request count
         return self.total_requests
+    
+    def _get_voice_system_prompt(self, user_context: Optional[Dict] = None) -> str:
+        """Get optimized system prompt for voice conversation"""
+        base_prompt = """You are a helpful AI assistant designed for natural voice conversation. 
+
+Key guidelines:
+- Keep responses concise and conversational (1-2 sentences max)
+- Use natural speech patterns that sound good when spoken
+- Avoid complex punctuation or formatting
+- Be warm, helpful, and engaging
+- Respond as if in a phone call conversation
+
+Current context: {context}"""
+
+        context = "General conversation"
+        if user_context:
+            if "persona" in user_context:
+                context += f", User preference: {user_context['persona']}"
+            if "conversation_history" in user_context:
+                context += f", Previous context available"
+        
+        return base_prompt.format(context=context)

@@ -32,22 +32,22 @@ class AudioSynthesis:
 
 class VoicePipeline:
     def __init__(self):
-        # Try to load from multiple .env locations
-        from dotenv import load_dotenv
-        import os
-        from pathlib import Path
+        # Use centralized config instead of loading .env files directly
+        try:
+            from app.config import settings
+            # Get API keys from centralized config
+            self.openai_key = settings.OPENAI_API_KEY
+            self.elevenlabs_key = settings.ELEVENLABS_API_KEY
+            self.elevenlabs_voice_id = settings.ELEVENLABS_VOICE_ID
+            logger.info("✅ VoicePipeline using centralized config")
+        except ImportError:
+            # Fallback to environment variables if config not available
+            import os
+            self.openai_key = os.getenv("OPENAI_API_KEY", "")
+            self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
+            self.elevenlabs_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+            logger.warning("⚠️ VoicePipeline using environment variables (config not available)")
         
-        # Try different .env file locations
-        env_paths = [Path('.env'), Path('../.env'), Path('../../.env'), Path('backend/.env')]
-        for env_path in env_paths:
-            if env_path.exists():
-                load_dotenv(env_path)
-                break
-        
-        # Initialize with API keys from environment
-        self.openai_key = os.getenv("OPENAI_API_KEY", "")
-        self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
-        self.elevenlabs_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.elevenlabs_model = "eleven_monolingual_v1"
         
         # Validate API keys
@@ -57,8 +57,19 @@ class VoicePipeline:
         logger.info(f"Voice Pipeline initialized")
         logger.info(f"Whisper (STT) available: {self.whisper_available}")
         logger.info(f"ElevenLabs (TTS) available: {self.elevenlabs_available}")
+        
+        # Debug: Show API key status
+        if self.openai_key:
+            logger.info(f"OpenAI key loaded: {self.openai_key[:10]}...")
+        else:
+            logger.warning("OpenAI key not loaded")
+            
+        if self.elevenlabs_key:
+            logger.info(f"ElevenLabs key loaded: {self.elevenlabs_key[:10]}...")
+        else:
+            logger.warning("ElevenLabs key not loaded")
     
-    async def transcribe_audio(self, audio_data: bytes, audio_format: str = "webm") -> AudioTranscription:
+    async def transcribe_audio(self, audio_data: bytes, audio_format: str = "raw") -> AudioTranscription:
         """
         Turn audio into text using Whisper
         Pass in the audio file as bytes
@@ -68,11 +79,16 @@ class VoicePipeline:
             return AudioTranscription(text="", language="en")
         
         try:
-            logger.info(f"Transcribing audio ({len(audio_data)} bytes)")
+            logger.info(f"Transcribing audio ({len(audio_data)} bytes, format: {audio_format})")
             
-            # Whisper needs a file, so wrap our bytes
-            audio_file = io.BytesIO(audio_data)
-            audio_file.name = f"audio.{audio_format}"
+            # For raw PCM data, we need to convert to WAV format for Whisper
+            if audio_format == "raw":
+                # Convert raw PCM to WAV format
+                audio_file = self._convert_raw_to_wav(audio_data)
+            else:
+                # Use as-is for other formats
+                audio_file = io.BytesIO(audio_data)
+                audio_file.name = f"audio.{audio_format}"
             
             # Call Whisper to transcribe
             client = openai.OpenAI(api_key=self.openai_key)
@@ -275,3 +291,57 @@ class VoicePipeline:
         test_results["pipeline"] = test_results["whisper"] and test_results["elevenlabs"]
         
         return test_results
+    
+    def _convert_raw_to_wav(self, raw_audio: bytes) -> io.BytesIO:
+        """
+        Convert raw PCM audio data to WAV format for Whisper
+        """
+        try:
+            # Assuming 16-bit PCM, 16kHz, mono
+            sample_rate = 16000
+            channels = 1
+            bits_per_sample = 16
+            
+            # WAV header structure
+            header_size = 44
+            data_size = len(raw_audio)
+            file_size = header_size + data_size - 8
+            
+            # Create WAV header
+            wav_header = bytearray()
+            
+            # RIFF header
+            wav_header.extend(b'RIFF')
+            wav_header.extend(file_size.to_bytes(4, 'little'))
+            wav_header.extend(b'WAVE')
+            
+            # Format chunk
+            wav_header.extend(b'fmt ')
+            wav_header.extend((16).to_bytes(4, 'little'))  # Chunk size
+            wav_header.extend((1).to_bytes(2, 'little'))   # Audio format (PCM)
+            wav_header.extend(channels.to_bytes(2, 'little'))
+            wav_header.extend(sample_rate.to_bytes(4, 'little'))
+            wav_header.extend((sample_rate * channels * bits_per_sample // 8).to_bytes(4, 'little'))  # Byte rate
+            wav_header.extend((channels * bits_per_sample // 8).to_bytes(2, 'little'))  # Block align
+            wav_header.extend(bits_per_sample.to_bytes(2, 'little'))
+            
+            # Data chunk
+            wav_header.extend(b'data')
+            wav_header.extend(data_size.to_bytes(4, 'little'))
+            
+            # Combine header and audio data
+            wav_data = wav_header + raw_audio
+            
+            # Create BytesIO object
+            wav_file = io.BytesIO(wav_data)
+            wav_file.name = "audio.wav"
+            
+            logger.info(f"Converted raw audio to WAV: {len(raw_audio)} bytes -> {len(wav_data)} bytes")
+            return wav_file
+            
+        except Exception as e:
+            logger.error(f"Error converting raw audio to WAV: {e}")
+            # Fallback: return raw audio as-is
+            audio_file = io.BytesIO(raw_audio)
+            audio_file.name = "audio.raw"
+            return audio_file
