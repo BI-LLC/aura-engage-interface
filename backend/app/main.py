@@ -153,7 +153,17 @@ app = FastAPI(
 # CORS for subdomains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://*.aura-voice-ai.com", "http://localhost:3000", "http://127.0.0.1:3000"],  # Allow subdomains and local dev
+    allow_origins=[
+        "https://*.aura-voice-ai.com", 
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",  # Vite default port
+        "http://127.0.0.1:5173",  # Vite default port
+        "http://localhost:4173",  # Vite preview port
+        "http://127.0.0.1:4173",  # Vite preview port
+        "http://localhost:8080",  # Frontend port
+        "http://127.0.0.1:8080"   # Frontend port
+    ],  # Allow subdomains and local dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

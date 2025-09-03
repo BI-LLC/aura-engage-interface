@@ -1,10 +1,9 @@
 """
 Enhanced Voice Activity Detection (VAD) - Critical for natural conversation flow
-Implements WebRTC VAD with advanced buffering and state management
+Mock version that doesn't require webrtcvad for development/testing
 """
 
 import numpy as np
-import webrtcvad
 import collections
 import logging
 from typing import Optional, Tuple, List
@@ -12,6 +11,26 @@ import struct
 import time
 
 logger = logging.getLogger(__name__)
+
+# Mock webrtcvad for development
+class MockWebRTCVAD:
+    def __init__(self, aggressiveness: int = 2):
+        self.aggressiveness = aggressiveness
+        logger.warning("Using mock WebRTC VAD - voice activity detection will be simulated")
+    
+    def is_speech(self, audio_chunk: bytes, sample_rate: int) -> bool:
+        # Simple mock implementation - simulate speech detection
+        # In a real implementation, this would use the actual webrtcvad library
+        return len(audio_chunk) > 0  # Simple mock - always return True for now
+
+# Try to import real webrtcvad, fall back to mock
+try:
+    import webrtcvad
+    WebRTCVAD = webrtcvad.Vad
+    logger.info("Real WebRTC VAD loaded successfully")
+except ImportError:
+    WebRTCVAD = MockWebRTCVAD
+    logger.warning("WebRTC VAD not available, using mock implementation")
 
 class EnhancedVoiceActivityDetector:
     def __init__(self, sample_rate: int = 16000, frame_duration: int = 30, aggressiveness: int = 2):
@@ -27,13 +46,14 @@ class EnhancedVoiceActivityDetector:
         self.frame_duration = frame_duration
         self.aggressiveness = aggressiveness
         
-        # Initialize WebRTC VAD
+        # Initialize WebRTC VAD (or mock)
         try:
-            self.vad = webrtcvad.Vad(aggressiveness)
-            logger.info(f"WebRTC VAD initialized with aggressiveness {aggressiveness}")
+            self.vad = WebRTCVAD(aggressiveness)
+            logger.info(f"VAD initialized with aggressiveness {aggressiveness}")
         except Exception as e:
-            logger.error(f"Failed to initialize WebRTC VAD: {e}")
-            raise
+            logger.error(f"Failed to initialize VAD: {e}")
+            # Fall back to mock
+            self.vad = MockWebRTCVAD(aggressiveness)
         
         # Calculate frame parameters
         self.frame_length = int(sample_rate * frame_duration / 1000)  # samples per frame
@@ -87,7 +107,7 @@ class EnhancedVoiceActivityDetector:
             logger.debug(f"Invalid frame size: {len(audio_chunk)} bytes, expected {self.frame_bytes}")
             return False, False, None
         
-        # Detect voice activity using WebRTC VAD
+        # Detect voice activity using VAD (real or mock)
         try:
             is_speech = self.vad.is_speech(audio_chunk, self.sample_rate)
         except Exception as e:
@@ -100,18 +120,44 @@ class EnhancedVoiceActivityDetector:
         # Update stats
         if is_speech:
             self.stats['speech_frames'] += 1
+            self.speech_frames.append(audio_chunk)
+            self.silence_frames.clear()
         else:
             self.stats['silence_frames'] += 1
+            self.silence_frames.append(audio_chunk)
         
-        # Need minimum buffer before making decisions
-        if len(self.ring_buffer) < 10:
-            return False, False, None
+        # Determine speech state
+        speech_ratio = sum(self.ring_buffer) / len(self.ring_buffer) if self.ring_buffer else 0
         
-        # Calculate speech ratio in recent frames
-        speech_ratio = sum(self.ring_buffer) / len(self.ring_buffer)
+        # Speech start detection
+        if not self.is_in_speech and speech_ratio >= self.speech_threshold:
+            if len(self.speech_frames) >= self.min_speech_frames:
+                self.is_in_speech = True
+                self.speech_start_time = time.time()
+                logger.debug("Speech started")
         
-        # Enhanced state machine for speech detection
-        return self._process_speech_state(audio_chunk, speech_ratio, is_speech)
+        # Speech end detection
+        elif self.is_in_speech and speech_ratio <= (1 - self.silence_threshold):
+            if len(self.silence_frames) >= self.max_silence_frames:
+                # Check minimum speech duration
+                if self.speech_start_time and (time.time() - self.speech_start_time) >= self.min_speech_duration:
+                    self.is_in_speech = False
+                    self.last_speech_time = time.time()
+                    
+                    # Accumulate complete speech audio
+                    complete_audio = b''.join(self.speech_frames)
+                    self.speech_frames.clear()
+                    
+                    self.stats['speech_segments'] += 1
+                    logger.debug(f"Speech ended, duration: {time.time() - self.speech_start_time:.2f}s")
+                    
+                    return False, True, complete_audio
+                else:
+                    # Reset if speech was too short
+                    self.speech_frames.clear()
+                    self.is_in_speech = False
+        
+        return self.is_in_speech, False, None
     
     def _process_speech_state(self, audio_chunk: bytes, speech_ratio: float, is_speech: bool) -> Tuple[bool, bool, Optional[bytes]]:
         """
