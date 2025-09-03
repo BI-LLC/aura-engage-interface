@@ -10,6 +10,7 @@ An intelligent voice AI assistant that combines multiple LLMs (Grok & GPT-4), re
 - **Streaming Audio**: Real-time audio generation for fast responses
 - **Admin Dashboard**: Manage knowledge base and system settings
 - **GDPR Compliant**: Full data export and deletion capabilities
+
 - **Multi-tenant Architecture**: Support for multiple organizations with isolated data
 - **React Frontend**: Modern TypeScript React application with voice interface
 - **Continuous Voice Processing**: Real-time voice activity detection and processing
