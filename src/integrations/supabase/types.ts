@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      logic_notes: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          tags: string[] | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -35,6 +68,45 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      reference_materials: {
+        Row: {
+          content: string | null
+          created_at: string
+          file_size: number
+          file_type: string
+          filename: string
+          id: string
+          original_filename: string
+          tags: string[] | null
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          file_size: number
+          file_type: string
+          filename: string
+          id?: string
+          original_filename: string
+          tags?: string[] | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          file_size?: number
+          file_type?: string
+          filename?: string
+          id?: string
+          original_filename?: string
+          tags?: string[] | null
+          updated_at?: string
+          uploaded_by?: string | null
         }
         Relationships: []
       }
