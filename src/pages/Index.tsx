@@ -41,11 +41,13 @@ export default function Index() {
               Your voice AI assistant for natural conversations and intelligent responses.
             </p>
 
-            <Button size="lg" className="gradient-primary text-primary-foreground px-8">
-              <Mic className="w-5 h-5 mr-2" />
-              Start Talking
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
+            <Link to="/auth">
+              <Button size="lg" className="gradient-primary text-primary-foreground px-8">
+                <Mic className="w-5 h-5 mr-2" />
+                Train Your Aura
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
