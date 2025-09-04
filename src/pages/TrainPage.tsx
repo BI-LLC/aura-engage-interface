@@ -548,6 +548,55 @@ export default function TrainPage() {
             </Card>
           </div>
 
+          {/* Embed Widget Section */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Download className="w-5 h-5" />
+                Embed Widget
+              </CardTitle>
+              <p className="text-muted-foreground">
+                Copy this code snippet to embed the Aura voice widget on your website
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-muted p-4 rounded-lg">
+                <code className="text-sm text-muted-foreground block whitespace-pre-wrap">
+{`<!-- Aura Voice AI Widget -->
+<div id="aura-widget"></div>
+<script>
+  (function() {
+    var script = document.createElement('script');
+    script.src = '${window.location.origin}/widget.js';
+    script.async = true;
+    document.head.appendChild(script);
+  })();
+</script>`}
+                </code>
+              </div>
+              <Button 
+                variant="outline" 
+                className="mt-4" 
+                onClick={() => {
+                  const code = `<!-- Aura Voice AI Widget -->
+<div id="aura-widget"></div>
+<script>
+  (function() {
+    var script = document.createElement('script');
+    script.src = '${window.location.origin}/widget.js';
+    script.async = true;
+    document.head.appendChild(script);
+  })();
+</script>`;
+                  navigator.clipboard.writeText(code);
+                  toast({ title: "Copied!", description: "Widget code copied to clipboard" });
+                }}
+              >
+                Copy Code
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Training Tabs */}
           <Card>
             <CardHeader>
