@@ -1,19 +1,36 @@
 # AURA Voice AI 🎯
 
-An intelligent voice AI assistant that combines multiple LLMs (Grok & GPT-4), realistic voice synthesis (ElevenLabs), and personalized memory for natural conversations.
+An intelligent, multi-tenant voice AI assistant that combines cutting-edge LLMs (Grok & GPT-4), ultra-realistic voice synthesis (ElevenLabs), and personalized memory for natural, real-time conversations. Built with modern architecture using FastAPI, React TypeScript, and Supabase for enterprise-grade scalability and security.
 
 ## 🌟 Features
 
-- **Smart LLM Routing**: Intelligently routes between Grok-4 and GPT-4-turbo based on query type
-- **Voice Synthesis**: Ultra-realistic voice output using ElevenLabs
-- **Memory System**: Remembers user preferences and conversation context
-- **Streaming Audio**: Real-time audio generation for fast responses
-- **Admin Dashboard**: Manage knowledge base and system settings
-- **GDPR Compliant**: Full data export and deletion capabilities
-- **Multi-tenant Architecture**: Support for multiple organizations with isolated data
-- **React Frontend**: Modern TypeScript React application with voice interface
-- **Continuous Voice Processing**: Real-time voice activity detection and processing
+### 🧠 **Intelligent AI Capabilities**
+- **Smart LLM Routing**: Intelligently routes between Grok-4 and GPT-4-turbo based on query complexity and type
+- **Real-time Streaming**: Token-by-token response generation for natural conversation flow
+- **Context Awareness**: Maintains conversation history and user preferences across sessions
+- **Multi-modal Support**: Seamless integration of voice, text, and function calling
+
+### 🎤 **Advanced Voice Technology**
+- **Ultra-realistic Voice Synthesis**: High-quality text-to-speech using ElevenLabs
+- **Real-time Speech Recognition**: Accurate speech-to-text with OpenAI Whisper
+- **Voice Activity Detection**: Smart detection of speech start/end with WebRTC VAD
+- **Continuous Conversation**: Natural back-and-forth dialogue without push-to-talk
+- **Interruption Handling**: Users can naturally interrupt AI responses
+
+### 🏢 **Enterprise Features**
+- **Multi-tenant Architecture**: Complete data isolation for multiple organizations
+- **Scalable Infrastructure**: Built for high-volume, concurrent voice sessions
+- **GDPR Compliant**: Full data export, deletion, and privacy controls
+- **Admin Dashboard**: Comprehensive management interface for system administration
 - **Document Processing**: AI-powered document ingestion and knowledge extraction
+- **Real-time Analytics**: Usage tracking and performance monitoring
+
+### 🚀 **Modern Technology Stack**
+- **Backend**: FastAPI with async/await for high performance
+- **Frontend**: React TypeScript with modern UI components
+- **Database**: Supabase with real-time subscriptions and RLS
+- **Voice Pipeline**: WebSocket-based real-time audio streaming
+- **Deployment**: Docker-ready with multi-environment support
 
 ## 🚀 Quick Start
 
@@ -112,12 +129,11 @@ aura-voice-ai/
 │   │   │   ├── documents.py          # Document processing
 │   │   │   ├── memory.py             # Memory management
 │   │   │   ├── admin.py              # Admin dashboard
-│   │   │   ├── tenant_admin.py       # Tenant management
-│   │   │   └── streaming.py          # Streaming endpoints
+│   │   │   └── tenant_admin.py       # Tenant management
 │   │   ├── services/                  # Core services
-│   │   │   ├── smart_router.py       # LLM routing
+│   │   │   ├── smart_router.py       # LLM routing (OpenAI/Grok)
 │   │   │   ├── memory_engine.py      # User memory
-│   │   │   ├── voice_pipeline.py     # STT/TTS
+│   │   │   ├── voice_pipeline.py     # STT/TTS pipeline
 │   │   │   ├── streaming_handler.py  # Audio streaming
 │   │   │   ├── persona_manager.py    # Personalization
 │   │   │   ├── tenant_manager.py     # Multi-tenant support
@@ -128,23 +144,46 @@ aura-voice-ai/
 │   │   │   ├── user.py               # User model
 │   │   │   ├── tenant.py             # Tenant model
 │   │   │   └── conversation.py       # Conversation model
-│   │   └── middleware/                # Middleware
-│   │       └── tenant_middleware.py  # Tenant isolation
+│   │   ├── middleware/                # Middleware
+│   │   │   └── tenant_middleware.py  # Tenant isolation
+│   │   └── supabase_client.py        # Supabase integration
+│   ├── database/
+│   │   ├── init.sql                  # Database initialization
+│   │   └── supabase_migration.sql    # Supabase migration
+│   ├── requirements.txt              # Python dependencies
+│   ├── Dockerfile                    # Backend container
+│   └── simple_test.py               # Development server
 ├── frontend/
-│   ├── aura-react-frontend/          # React TypeScript app (git submodule)
+│   ├── aura-react-frontend/          # React TypeScript app
 │   │   ├── src/
 │   │   │   ├── components/           # React components
 │   │   │   ├── pages/                # Page components
 │   │   │   ├── contexts/             # React contexts
 │   │   │   └── hooks/                # Custom hooks
-│   │   ├── package.json              # Frontend dependencies
-│   │   └── README.md                 # Frontend documentation
-│   ├── admin/                        # Admin dashboard
-│   └── widget/                       # Voice widget
+│   │   └── package.json              # Frontend dependencies
+│   ├── admin/                        # Admin dashboard (HTML/JS)
+│   ├── widget/                       # Voice widget (HTML/JS)
+│   └── shared/                       # Shared utilities
 ├── test/                             # Test scripts
-├── docker-compose.yml                # Docker configuration
-├── docker-compose.multi-tenant.yml   # Multi-tenant Docker setup
-└── README.md
+│   ├── test_api_keys.py             # API key testing
+│   ├── test_complete_pipeline.py    # Full pipeline testing
+│   ├── test_continuous_voice.py     # Voice conversation testing
+│   ├── test_streaming.py            # Streaming functionality testing
+│   ├── test_voice_pipeline.py       # Voice pipeline testing
+│   └── test_*.py                     # Other test files
+├── docs/                             # Documentation
+│   ├── SYSTEM_ARCHITECTURE.md       # System architecture
+│   ├── DEVELOPER_GUIDE.md           # Developer documentation
+│   ├── CONTINUOUS_VOICE_GUIDE.md    # Voice system guide
+│   ├── IMPLEMENTATION_ROADMAP.md    # Development roadmap
+│   ├── TROUBLESHOOTING_GUIDE.md     # Troubleshooting
+│   ├── QUICK_REFERENCE.md           # Quick reference
+│   └── websocket-api.md             # WebSocket API docs
+├── deployment/                       # Deployment configs
+├── scripts/                          # Utility scripts
+├── docker-compose.yml               # Docker configuration
+├── SUPABASE_SETUP_GUIDE.md          # Supabase setup guide
+└── README.md                        # This file
 ```
 
 ## 🔧 Configuration
@@ -196,11 +235,15 @@ npm run preview      # Preview production build
 ### Run Test Scripts
 ```bash
 cd test
+python test_api_keys.py            # Test API key configuration
+python test_complete_pipeline.py   # Test full voice pipeline
+python test_continuous_voice.py    # Test real-time voice conversation
+python test_streaming.py           # Test streaming functionality
+python test_voice_pipeline.py      # Test voice pipeline components
 python test_router.py              # Test LLM routing
 python test_memory.py              # Test memory system
-python test_voice.py               # Test voice pipeline
+python test_voice.py               # Test voice components
 python test_tts.py                 # Test text-to-speech
-python test_continuous_voice.py    # Test real-time voice
 python test_document.py            # Test document processing
 ```
 
@@ -271,37 +314,6 @@ curl -X POST http://localhost:8000/continuous-voice/start \
 - **API Success Rate**: > 95%
 - **Real-time Voice Processing**: < 100ms latency
 
-## 🛠️ Development Roadmap
-
-### Phase 1: Foundation ✅
-- [x] Smart LLM routing
-- [x] Memory system
-- [x] Basic API endpoints
-
-### Phase 2: Voice ✅
-- [x] Speech-to-text (Whisper)
-- [x] Text-to-speech (ElevenLabs)
-- [x] Audio streaming
-
-### Phase 3: Intelligence ✅
-- [x] Persona management
-- [x] Knowledge base integration
-- [x] Document processing with AI
-- [x] Multi-tenant architecture
-
-### Phase 4: Frontend ✅
-- [x] React TypeScript UI
-- [x] Voice call interface
-- [x] Admin dashboard
-- [x] Real-time voice processing
-
-### Phase 5: Advanced 🚧
-- [x] Continuous voice conversation
-- [x] Enhanced voice activity detection
-- [x] Document AI processing
-- [ ] Social media integration
-- [ ] Fine-tuning pipeline
-- [ ] Multi-language support
 
 ## 🐛 Troubleshooting
 
@@ -394,43 +406,43 @@ git push
 
 ## 📝 License
 
-MIT License - See LICENSE file for details
+Proprietary Software License - See [LICENSE](LICENSE) file for details
+
+**⚠️ RESTRICTED USE**: This software is proprietary and confidential to Aura Team. Unauthorized use is prohibited.
 
 ## 🤝 Contributing
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
+This is proprietary software developed exclusively by Aura Team. External contributions are not accepted.
 
-**Note for Contributors:**
+**For Aura Team Members:**
 - Backend changes go in the main repository
 - Frontend changes go in the `frontend/aura-react-frontend` submodule
 - Always update submodule references when frontend changes are made
+- Follow internal development guidelines and code review processes
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the `docs/` folder:
+
+- **[Documentation Index](docs/README.md)** - Navigate all documentation
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Complete development documentation
+- **[System Architecture](docs/SYSTEM_ARCHITECTURE.md)** - Technical architecture
+- **[Continuous Voice Guide](docs/CONTINUOUS_VOICE_GUIDE.md)** - Voice system guide
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING_GUIDE.md)** - Common issues and solutions
+- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Essential commands
+- **[WebSocket API](docs/websocket-api.md)** - Real-time communication protocol
 
 ## 📧 Support
 
 For issues and questions:
+- Check the [Documentation Index](docs/README.md) for guidance
+- Review the [Troubleshooting Guide](docs/TROUBLESHOOTING_GUIDE.md) for common issues
 - Open an issue on GitHub
 - Check the test interface at `/test`
 - Review logs for debugging
 - Check frontend console for frontend issues
 
 ## 🚀 Deployment
-
-### Production Checklist
-- [ ] All API keys configured
-- [ ] Database configured for production
-- [ ] Redis configured for production
-- [ ] HTTPS enabled
-- [ ] Monitoring set up
-- [ ] Backup strategy defined
-- [ ] Rate limiting configured
-- [ ] Security audit completed
-- [ ] Frontend built and deployed
-- [ ] Submodules properly configured
 
 ### Docker Deployment
 ```bash
@@ -443,4 +455,14 @@ docker-compose up -d
 
 ---
 
-**Aura property** - Multi-tenant Voice AI Platform
+## 📄 License
+
+This software is proprietary and confidential to Aura Team. All rights reserved.
+
+**⚠️ IMPORTANT**: This software is NOT open source. It is proprietary software owned exclusively by Aura Team. Unauthorized use, copying, distribution, or modification is strictly prohibited and may result in legal action.
+
+For licensing inquiries, contact: [contact@aurateam.com]
+
+---
+
+**Made with ❤️ by Aura Team** - Multi-tenant Voice AI Platform
