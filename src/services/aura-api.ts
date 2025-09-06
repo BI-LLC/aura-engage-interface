@@ -1,5 +1,26 @@
 // Aura API Service - Real-time voice communication with Aura backend
-import { EventEmitter } from 'events';
+
+// Simple browser-compatible EventEmitter
+class SimpleEventEmitter {
+  private events: Record<string, Function[]> = {};
+
+  on(event: string, listener: Function) {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+    this.events[event].push(listener);
+  }
+
+  off(event: string, listener: Function) {
+    if (!this.events[event]) return;
+    this.events[event] = this.events[event].filter(l => l !== listener);
+  }
+
+  emit(event: string, ...args: any[]) {
+    if (!this.events[event]) return;
+    this.events[event].forEach(listener => listener(...args));
+  }
+}
 
 export interface AuraMessage {
   id: string;
@@ -21,7 +42,7 @@ export interface AudioSettings {
   bitsPerSample: number;
 }
 
-export class AuraAPIService extends EventEmitter {
+export class AuraAPIService extends SimpleEventEmitter {
   private ws: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
   private mediaRecorder: MediaRecorder | null = null;
