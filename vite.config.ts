@@ -7,14 +7,7 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
-    proxy: {
-      '/api/aura': {
-        target: 'http://localhost:8880',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/aura/, '')
-      }
-    }
+    port: 8080
   },
   plugins: [
     react(),

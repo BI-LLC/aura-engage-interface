@@ -1,4 +1,5 @@
 // Aura API Service - Real-time voice communication with Aura backend
+// Implements the audio processing pipeline from your developer guide
 
 // Simple browser-compatible EventEmitter
 class SimpleEventEmitter {
@@ -45,18 +46,19 @@ export interface AudioSettings {
 export class AuraAPIService extends SimpleEventEmitter {
   private ws: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
+  private scriptProcessor: ScriptProcessorNode | null = null;
   private audioStream: MediaStream | null = null;
   private status: AuraStatus = { status: 'idle', isConnected: false };
   private reconnectTimeout: number | null = null;
   private audioQueue: AudioBuffer[] = [];
   private isPlayingAudio = false;
 
-  private readonly BACKEND_URL = 'ws://localhost:8880/ws'; // Aura backend WebSocket
+  // Updated to match your backend specifications
+  private readonly BACKEND_URL = 'ws://localhost:8880/ws/voice/continuous';
   private readonly AUDIO_SETTINGS: AudioSettings = {
-    sampleRate: 24000,
-    channels: 1,
-    bitsPerSample: 16
+    sampleRate: 16000, // 16kHz as specified in your guide
+    channels: 1,       // Mono
+    bitsPerSample: 16  // 16-bit PCM
   };
 
   constructor() {
@@ -117,39 +119,54 @@ export class AuraAPIService extends SimpleEventEmitter {
 
   private handleWebSocketMessage(event: MessageEvent) {
     try {
+      // Handle both binary and text messages based on your backend protocol
+      if (event.data instanceof ArrayBuffer) {
+        // Binary audio response from backend
+        this.handleBinaryAudioData(event.data);
+        return;
+      }
+
       const data = JSON.parse(event.data);
       
       switch (data.type) {
-        case 'status':
-          this.updateStatus({ status: data.status });
-          break;
-          
-        case 'audio':
-          this.handleAudioData(data.audio);
-          break;
-          
         case 'transcript':
           this.emit('transcript', data.text);
           break;
           
-        case 'message':
-          const message: AuraMessage = {
-            id: data.id || Date.now().toString(),
-            type: data.sender || 'assistant',
-            content: data.content,
-            timestamp: new Date(data.timestamp || Date.now()),
-            audio: data.audio
-          };
-          this.emit('message', message);
+        case 'audio':
+          // Base64 encoded audio from backend
+          this.handleAudioData(data.audio);
           break;
           
         case 'error':
-          console.error('Aura backend error:', data.error);
-          this.updateStatus({ status: 'error', error: data.error });
+          console.error('Aura backend error:', data.text);
+          this.updateStatus({ status: 'error', error: data.text });
+          break;
+
+        default:
+          // Handle other message types as needed
+          console.log('Received message:', data);
           break;
       }
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error);
+    }
+  }
+
+  private async handleBinaryAudioData(audioData: ArrayBuffer) {
+    if (!this.audioContext) return;
+
+    try {
+      // Create WAV header for PCM audio
+      const wavBuffer = this.createWAVFromPCM(audioData);
+      const audioBuffer = await this.audioContext.decodeAudioData(wavBuffer);
+      
+      this.audioQueue.push(audioBuffer);
+      if (!this.isPlayingAudio) {
+        this.playNextAudio();
+      }
+    } catch (error) {
+      console.error('Failed to process binary audio data:', error);
     }
   }
 
@@ -240,6 +257,7 @@ export class AuraAPIService extends SimpleEventEmitter {
     if (!this.audioContext || this.status.status === 'listening') return;
 
     try {
+      // Get microphone access with 16kHz configuration
       this.audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: this.AUDIO_SETTINGS.sampleRate,
@@ -250,17 +268,29 @@ export class AuraAPIService extends SimpleEventEmitter {
         }
       });
 
-      this.mediaRecorder = new MediaRecorder(this.audioStream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+      // Use ScriptProcessor for real-time audio streaming (as per your guide)
+      const source = this.audioContext.createMediaStreamSource(this.audioStream);
+      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.sendAudioData(event.data);
+      // Real-time audio processing and streaming
+      this.scriptProcessor.onaudioprocess = (event) => {
+        const inputData = event.inputBuffer.getChannelData(0);
+        const int16Array = new Int16Array(inputData.length);
+        
+        // Convert Float32 to Int16 (as specified in your guide)
+        for (let i = 0; i < inputData.length; i++) {
+          int16Array[i] = inputData[i] * 32767;
+        }
+        
+        // Send binary audio data directly via WebSocket
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(int16Array.buffer);
         }
       };
 
-      this.mediaRecorder.start(100); // Send data every 100ms
+      source.connect(this.scriptProcessor);
+      this.scriptProcessor.connect(this.audioContext.destination);
+
       this.updateStatus({ status: 'listening' });
       
     } catch (error) {
@@ -270,8 +300,9 @@ export class AuraAPIService extends SimpleEventEmitter {
   }
 
   stopListening() {
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop();
+    if (this.scriptProcessor) {
+      this.scriptProcessor.disconnect();
+      this.scriptProcessor = null;
     }
     
     if (this.audioStream) {
@@ -282,30 +313,13 @@ export class AuraAPIService extends SimpleEventEmitter {
     this.updateStatus({ status: 'idle' });
   }
 
-  private async sendAudioData(audioBlob: Blob) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-    try {
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      
-      this.ws.send(JSON.stringify({
-        type: 'audio',
-        audio: base64Audio,
-        format: 'webm'
-      }));
-    } catch (error) {
-      console.error('Failed to send audio data:', error);
-    }
-  }
-
   sendTextMessage(text: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
+    // Send text message as JSON (for non-audio messages)
     const message = {
       type: 'text',
-      content: text,
-      timestamp: new Date().toISOString()
+      text: text
     };
 
     this.ws.send(JSON.stringify(message));
