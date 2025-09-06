@@ -1,0 +1,4 @@
+[submodule "aura-backend"]
+	path = aura-backend
+	url = https://github.com/BI-LLC/Aura.git
+	branch = main
