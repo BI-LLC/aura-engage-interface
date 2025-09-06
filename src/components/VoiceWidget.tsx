@@ -42,6 +42,8 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
     reconnect
   } = useAura();
 
+  console.log('VoiceWidget render - status:', status, 'isInitialized:', isInitialized);
+
   // Map Aura status to voice status
   const voiceStatus: VoiceStatus = status.status;
   const conversation = messages;

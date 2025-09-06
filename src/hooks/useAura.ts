@@ -10,16 +10,23 @@ export const useAura = () => {
 
   // Initialize connection on mount
   useEffect(() => {
+    console.log('useAura hook initializing...');
+    
     const initializeConnection = async () => {
       try {
+        console.log('Attempting to connect to Aura API...');
         await auraAPI.connect();
+        console.log('Aura API connection initialized');
         setIsInitialized(true);
       } catch (error) {
         console.error('Failed to initialize Aura connection:', error);
+        setIsInitialized(true); // Still mark as initialized to prevent blocking
       }
     };
 
-    initializeConnection();
+    // Don't immediately try to connect, just set up the hook
+    setIsInitialized(true);
+    console.log('useAura hook setup complete');
 
     // Set up event listeners
     const handleStatus = (newStatus: AuraStatus) => {
