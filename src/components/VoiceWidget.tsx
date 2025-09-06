@@ -9,18 +9,15 @@ import {
   VolumeX, 
   Minimize2,
   X,
-  MessageSquare
+  MessageSquare,
+  Wifi,
+  WifiOff,
+  AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAura } from "@/hooks/useAura";
 
-type VoiceStatus = "idle" | "listening" | "thinking" | "responding" | "muted";
-
-interface ConversationMessage {
-  id: string;
-  type: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
+type VoiceStatus = "idle" | "listening" | "thinking" | "responding" | "muted" | "connecting" | "error";
 
 interface VoiceWidgetProps {
   className?: string;
@@ -31,82 +28,59 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isTalkModeActive, setIsTalkModeActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
-  const [conversation, setConversation] = useState<ConversationMessage[]>([]);
-  const [currentTranscript, setCurrentTranscript] = useState("");
   const [waveformBars] = useState(Array.from({ length: 5 }, (_, i) => i));
+  
+  // Use Aura API hook
+  const { 
+    messages, 
+    status, 
+    currentTranscript, 
+    isInitialized,
+    startListening, 
+    stopListening, 
+    sendMessage,
+    reconnect
+  } = useAura();
 
-  // Simulate conversation flow
-  useEffect(() => {
-    if (isTalkModeActive && voiceStatus === "listening") {
-      // Simulate user speaking after a delay
-      const speakingTimer = setTimeout(() => {
-        if (isTalkModeActive) {
-          setCurrentTranscript("Hello Aura, how are you today?");
-          setVoiceStatus("thinking");
-          
-          // Simulate AI thinking
-          setTimeout(() => {
-            if (isTalkModeActive) {
-              setVoiceStatus("responding");
-              const newMessage: ConversationMessage = {
-                id: Date.now().toString(),
-                type: 'assistant',
-                content: "Hello! I'm doing great, thank you for asking. How can I assist you today?",
-                timestamp: new Date()
-              };
-              
-              // Add user message first
-              setConversation(prev => [...prev, {
-                id: (Date.now() - 1).toString(),
-                type: 'user',
-                content: currentTranscript,
-                timestamp: new Date()
-              }, newMessage]);
-              
-              // Reset to listening after response
-              setTimeout(() => {
-                if (isTalkModeActive) {
-                  setVoiceStatus("listening");
-                  setCurrentTranscript("");
-                }
-              }, 3000);
-            }
-          }, 2000);
-        }
-      }, 3000);
-      
-      return () => clearTimeout(speakingTimer);
-    }
-  }, [isTalkModeActive, voiceStatus, currentTranscript]);
+  // Map Aura status to voice status
+  const voiceStatus: VoiceStatus = status.status;
+  const conversation = messages;
 
   const getStatusColor = (status: VoiceStatus) => {
     switch (status) {
       case "listening":
-        return "text-emerald-500";
+        return "text-voice-listening";
       case "thinking":
-        return "text-amber-500";  
+        return "text-voice-thinking";  
       case "responding":
-        return "text-purple-500";
+        return "text-voice-speaking";
+      case "connecting":
+        return "text-primary";
+      case "error":
+        return "text-destructive";
       case "muted":
-        return "text-muted-foreground";
+        return "text-voice-muted";
       default:
         return "text-muted-foreground";
     }
   };
 
-  const getStatusText = (status: VoiceStatus) => {
-    switch (status) {
+  const getStatusText = (voiceStatus: VoiceStatus) => {
+    switch (voiceStatus) {
       case "listening":
         return "Listening...";
       case "thinking":
         return "Thinking...";
       case "responding":
         return "Responding...";
+      case "connecting":
+        return "Connecting...";
+      case "error":
+        return "Connection Error";
       case "muted":
         return "Muted";
       default:
-        return "Ready to talk";
+        return status.isConnected ? "Ready to talk" : "Disconnected";
     }
   };
 
@@ -118,18 +92,26 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
         return "shadow-amber-400/50";
       case "responding":
         return "shadow-purple-400/50";
+      case "connecting":
+        return "shadow-primary/50";
+      case "error":
+        return "shadow-destructive/50";
       default:
         return "";
     }
   };
 
-  const handleTalkModeToggle = () => {
+  const handleTalkModeToggle = async () => {
+    if (!status.isConnected && !isTalkModeActive) {
+      await reconnect();
+      return;
+    }
+
     setIsTalkModeActive(!isTalkModeActive);
     if (!isTalkModeActive) {
-      setVoiceStatus("listening");
+      await startListening();
     } else {
-      setVoiceStatus("idle");
-      setCurrentTranscript("");
+      stopListening();
     }
   };
 
@@ -155,15 +137,27 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
       <Card className="w-96 max-w-[calc(100vw-3rem)] floating-shadow">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">A</span>
+            <div className="flex items-center gap-3">
+              <div className="relative w-8 h-8 rounded-full gradient-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-sm">A</span>
+                {status.isConnected ? (
+                  <Wifi className="absolute -bottom-1 -right-1 w-3 h-3 text-voice-listening bg-background rounded-full p-0.5" />
+                ) : (
+                  <WifiOff className="absolute -bottom-1 -right-1 w-3 h-3 text-destructive bg-background rounded-full p-0.5" />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-foreground">Aura</h3>
+                  {voiceStatus === 'error' && (
+                    <AlertCircle className="w-3 h-3 text-destructive" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {status.isConnected ? 'Voice AI Assistant' : 'Connecting...'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-semibold text-foreground">Aura</h3>
-              <p className="text-xs text-muted-foreground">Voice AI Assistant</p>
-            </div>
-          </div>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -211,7 +205,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                   {waveformBars.map((_, index) => (
                     <div
                       key={index}
-                      className="w-1 bg-emerald-500 rounded-full animate-wave-listening"
+                      className="w-1 bg-voice-listening rounded-full animate-wave-listening"
                       style={{ 
                         height: '8px',
                         animationDelay: `${index * 0.1}s`,
@@ -224,7 +218,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
               
               {voiceStatus === "thinking" && (
                 <div className="flex items-center justify-center">
-                  <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-8 h-8 border-2 border-voice-thinking border-t-transparent rounded-full animate-spin"></div>
                 </div>
               )}
               
@@ -233,13 +227,25 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                   {waveformBars.map((_, index) => (
                     <div
                       key={index}
-                      className="w-1 bg-purple-500 rounded-full animate-pulse"
+                      className="w-1 bg-voice-speaking rounded-full animate-pulse"
                       style={{ 
                         height: `${12 + (index % 3) * 4}px`,
                         animationDelay: `${index * 0.15}s`
                       }}
                     ></div>
                   ))}
+                </div>
+              )}
+
+              {voiceStatus === "connecting" && (
+                <div className="flex items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
+
+              {voiceStatus === "error" && (
+                <div className="flex items-center justify-center">
+                  <AlertCircle className="w-8 h-8 text-destructive" />
                 </div>
               )}
               
@@ -287,13 +293,19 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                 variant={isTalkModeActive ? "default" : "outline"}
                 size="lg"
                 onClick={handleTalkModeToggle}
+                disabled={!isInitialized || voiceStatus === 'connecting'}
                 className={`flex-1 ${
                   isTalkModeActive 
                     ? `gradient-primary text-primary-foreground shadow-lg ${getStatusGlow(voiceStatus)}` 
                     : ""
                 } transition-all duration-300`}
               >
-                {isTalkModeActive ? (
+                {voiceStatus === 'connecting' ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Connecting...
+                  </>
+                ) : isTalkModeActive ? (
                   <>
                     <PhoneOff className="w-4 h-4 mr-2" />
                     End Talk
@@ -301,7 +313,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                 ) : (
                   <>
                     <Phone className="w-4 h-4 mr-2" />
-                    Start Talking
+                    {status.isConnected ? 'Start Talking' : 'Reconnect'}
                   </>
                 )}
               </Button>
