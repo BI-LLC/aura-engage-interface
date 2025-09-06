@@ -7,7 +7,7 @@ import Index from "./pages/Index";
 import TrainPage from "./pages/TrainPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
-import RealVoiceWidget from "./components/RealVoiceWidget";
+import VoiceWidget from "./components/VoiceWidget";
 import { AuthProvider } from "./contexts/AuthContext";
 
 const queryClient = new QueryClient();
@@ -26,7 +26,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <RealVoiceWidget />
+          <VoiceWidget />
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>
