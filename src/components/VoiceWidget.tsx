@@ -26,7 +26,7 @@ interface VoiceWidgetProps {
   className?: string;
 }
 
-export const VoiceWidget = ({ className }: VoiceWidgetProps) => {
+export default function VoiceWidget({ className }: VoiceWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isTalkModeActive, setIsTalkModeActive] = useState(false);
@@ -328,6 +328,4 @@ export const VoiceWidget = ({ className }: VoiceWidgetProps) => {
       </Card>
     </div>
   );
-};
-
-export default VoiceWidget;
+}
