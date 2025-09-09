@@ -37,12 +37,12 @@ class Settings(BaseSettings):
     )
     
     # API Keys
-    GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    GROK_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
     
     # Voice API Keys
-    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
-    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel voice default
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"  # Default fallback
     
     # API URLs
     GROK_API_URL: str = "https://api.x.ai/v1"
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     OPENAI_RATE_LIMIT: int = 500
     
     # Redis URL
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    REDIS_URL: str = "redis://localhost:6379"
     
     # Future: Social Media API Keys
     # YOUTUBE_API_KEY: Optional[str] = None
