@@ -5,8 +5,8 @@
 const AURA_API_BASE = 'http://localhost:8000';
 const WEBSOCKET_URL = `ws://localhost:8000/ws/voice/continuous`;
 
-// Demo token for testing (in production this would come from authentication)
-const DEMO_TOKEN = 'demo_token';
+// Create a simple test user token (matching backend auth format)
+const DEMO_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoidGVzdF91c2VyIiwidGVuYW50X2lkIjoidGVzdF90ZW5hbnQiLCJlbWFpbCI6InRlc3RAdGVzdC5jb20ifQ.test';
 
 // Type definitions
 export interface AuraMessage {
@@ -152,7 +152,7 @@ class AuraAPI extends SimpleEventEmitter {
         this.ws.onerror = (error) => {
           log('error', 'WebSocket error occurred', error);
           this.connected = false;
-          reject(new Error('WebSocket connection failed'));
+          reject(new Error('Cannot connect to backend. Please ensure the backend server is running at localhost:8000'));
         };
 
         this.ws.onclose = (event) => {
@@ -181,9 +181,9 @@ class AuraAPI extends SimpleEventEmitter {
           if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
             log('error', 'WebSocket connection timeout');
             this.ws.close();
-            reject(new Error('WebSocket connection timeout'));
+            reject(new Error('Backend connection timeout. Please start the backend server with: cd backend-copy && docker-compose up'));
           }
-        }, 10000);
+        }, 5000);
         
       } catch (error) {
         log('error', 'Error creating WebSocket connection', error);

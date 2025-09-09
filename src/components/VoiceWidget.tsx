@@ -12,12 +12,10 @@ import {
   MessageSquare,
   Wifi,
   WifiOff,
-  AlertCircle,
-  Settings
+  AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAura } from "@/hooks/useAura";
-import ConnectionDiagnostics from "@/components/ConnectionDiagnostics";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "responding" | "muted" | "connecting" | "error";
 
@@ -30,7 +28,6 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isTalkModeActive, setIsTalkModeActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [waveformBars] = useState(Array.from({ length: 5 }, (_, i) => i));
   
   // Use Aura API hook
@@ -167,14 +164,6 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowDiagnostics(!showDiagnostics)}
-              title="Connection Diagnostics"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
               onClick={() => setIsMinimized(!isMinimized)}
             >
               <Minimize2 className="w-4 h-4" />
@@ -191,10 +180,6 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
 
         {!isMinimized ? (
           <CardContent className="p-4 space-y-4">
-            {/* Connection Diagnostics */}
-            {showDiagnostics && (
-              <ConnectionDiagnostics className="mb-4" />
-            )}
 
             {/* Status Indicator with Enhanced Visual Feedback */}
             <div className="flex items-center justify-between">
@@ -262,8 +247,12 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
               )}
 
               {voiceStatus === "error" && (
-                <div className="flex items-center justify-center">
+                <div className="flex flex-col items-center justify-center text-center space-y-2">
                   <AlertCircle className="w-8 h-8 text-destructive" />
+                  <p className="text-xs text-destructive px-2">
+                    Backend not running. Start with: <br/>
+                    <code className="text-xs bg-muted px-1 rounded">cd backend-copy && docker-compose up</code>
+                  </p>
                 </div>
               )}
               
