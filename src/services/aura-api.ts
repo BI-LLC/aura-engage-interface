@@ -85,35 +85,48 @@ export class AuraAPIService extends SimpleEventEmitter {
   async connect() {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
+    console.log('🔌 Attempting to connect to:', this.BACKEND_URL);
     this.updateStatus({ status: 'connecting' });
 
     try {
+      // Add ngrok headers if using ngrok tunnel
+      const isNgrok = this.BACKEND_URL.includes('ngrok');
+      console.log('📡 Using ngrok tunnel:', isNgrok);
+      
       this.ws = new WebSocket(this.BACKEND_URL);
       
       this.ws.onopen = () => {
-        console.log('Connected to Aura backend');
+        console.log('✅ Connected to Aura backend successfully');
         this.updateStatus({ status: 'idle', isConnected: true });
         this.clearReconnectTimeout();
       };
 
       this.ws.onmessage = (event) => {
+        console.log('📨 Received message:', event.data);
         this.handleWebSocketMessage(event);
       };
 
-      this.ws.onclose = () => {
-        console.log('Disconnected from Aura backend');
-        this.updateStatus({ status: 'idle', isConnected: false });
-        this.scheduleReconnect();
+      this.ws.onclose = (event) => {
+        console.log('🔌 Disconnected from Aura backend - Code:', event.code, 'Reason:', event.reason);
+        const errorMsg = event.code === 1006 ? 'Connection lost unexpectedly' : event.reason || 'Connection closed';
+        this.updateStatus({ status: 'idle', isConnected: false, error: errorMsg });
+        
+        // Only reconnect if it wasn't a manual close
+        if (event.code !== 1000) {
+          this.scheduleReconnect();
+        }
       };
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        this.updateStatus({ status: 'error', isConnected: false, error: 'Connection failed' });
+        console.error('❌ WebSocket error:', error);
+        console.error('🔍 Error details - URL:', this.BACKEND_URL);
+        console.error('🔍 WebSocket state:', this.ws?.readyState);
+        this.updateStatus({ status: 'error', isConnected: false, error: 'Connection failed - check console for details' });
       };
 
     } catch (error) {
-      console.error('Failed to connect to Aura backend:', error);
-      this.updateStatus({ status: 'error', isConnected: false, error: 'Connection failed' });
+      console.error('💥 Failed to create WebSocket connection:', error);
+      this.updateStatus({ status: 'error', isConnected: false, error: `Failed to initialize: ${error.message}` });
     }
   }
 
@@ -367,6 +380,72 @@ export class AuraAPIService extends SimpleEventEmitter {
 
   getStatus(): AuraStatus {
     return this.status;
+  }
+
+  // Diagnostic methods for debugging
+  async testConnection(): Promise<{ success: boolean; error?: string; details: any }> {
+    console.log('🧪 Testing connection to:', this.BACKEND_URL);
+    
+    try {
+      // Test basic connectivity
+      const url = new URL(this.BACKEND_URL);
+      const httpUrl = `https://${url.host}`;
+      
+      console.log('🌐 Testing HTTP endpoint:', httpUrl);
+      
+      const response = await fetch(httpUrl, { method: 'HEAD' });
+      console.log('📊 HTTP Response:', response.status, response.statusText);
+      
+      // Test WebSocket
+      return new Promise((resolve) => {
+        const testWs = new WebSocket(this.BACKEND_URL);
+        const timeout = setTimeout(() => {
+          testWs.close();
+          resolve({
+            success: false,
+            error: 'Connection timeout',
+            details: { httpStatus: response.status, timeout: true }
+          });
+        }, 5000);
+        
+        testWs.onopen = () => {
+          clearTimeout(timeout);
+          testWs.close();
+          resolve({
+            success: true,
+            details: { httpStatus: response.status }
+          });
+        };
+        
+        testWs.onerror = (error) => {
+          clearTimeout(timeout);
+          resolve({
+            success: false,
+            error: 'WebSocket connection failed',
+            details: { httpStatus: response.status, wsError: error }
+          });
+        };
+      });
+      
+    } catch (error) {
+      console.error('🚫 Connection test failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: { error }
+      };
+    }
+  }
+
+  getDiagnostics() {
+    return {
+      backendUrl: this.BACKEND_URL,
+      wsState: this.ws?.readyState,
+      wsStateText: this.ws ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][this.ws.readyState] : 'NULL',
+      status: this.status,
+      audioContext: this.audioContext?.state,
+      isNgrok: this.BACKEND_URL.includes('ngrok')
+    };
   }
 }
 

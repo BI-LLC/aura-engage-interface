@@ -78,9 +78,20 @@ export const useAura = () => {
 
   const reconnect = useCallback(async () => {
     try {
+      console.log('🔄 Attempting to reconnect...');
       await auraAPI.connect();
     } catch (error) {
       console.error('Failed to reconnect:', error);
+    }
+  }, []);
+
+  const testConnection = useCallback(async () => {
+    try {
+      console.log('🧪 Testing connection...');
+      return await auraAPI.testConnection();
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      return { success: false, error: error.message, details: { error } };
     }
   }, []);
 
@@ -93,6 +104,7 @@ export const useAura = () => {
     stopListening,
     sendMessage,
     clearConversation,
-    reconnect
+    reconnect,
+    testConnection
   };
 };

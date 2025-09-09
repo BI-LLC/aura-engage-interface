@@ -12,10 +12,12 @@ import {
   MessageSquare,
   Wifi,
   WifiOff,
-  AlertCircle
+  AlertCircle,
+  Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAura } from "@/hooks/useAura";
+import ConnectionDiagnostics from "@/components/ConnectionDiagnostics";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "responding" | "muted" | "connecting" | "error";
 
@@ -28,6 +30,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isTalkModeActive, setIsTalkModeActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [waveformBars] = useState(Array.from({ length: 5 }, (_, i) => i));
   
   // Use Aura API hook
@@ -164,6 +167,14 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
             <Button
               variant="ghost"
               size="sm"
+              onClick={() => setShowDiagnostics(!showDiagnostics)}
+              title="Connection Diagnostics"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setIsMinimized(!isMinimized)}
             >
               <Minimize2 className="w-4 h-4" />
@@ -180,6 +191,11 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
 
         {!isMinimized ? (
           <CardContent className="p-4 space-y-4">
+            {/* Connection Diagnostics */}
+            {showDiagnostics && (
+              <ConnectionDiagnostics className="mb-4" />
+            )}
+
             {/* Status Indicator with Enhanced Visual Feedback */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
