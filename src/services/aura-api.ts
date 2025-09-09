@@ -53,8 +53,8 @@ export class AuraAPIService extends SimpleEventEmitter {
   private audioQueue: AudioBuffer[] = [];
   private isPlayingAudio = false;
 
-  // Updated to match your backend specifications  
-  private readonly BACKEND_URL = 'wss://157.245.192.221:8880/ws/voice/continuous';
+  // Updated to use ngrok tunnel for SSL support
+  private readonly BACKEND_URL = 'wss://f3d437906df7.ngrok-free.app/ws/voice/continuous';
   private readonly AUDIO_SETTINGS: AudioSettings = {
     sampleRate: 16000, // 16kHz as specified in your guide
     channels: 1,       // Mono
