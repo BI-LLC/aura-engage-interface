@@ -1,7 +1,7 @@
 # AURA Voice AI Backend - Dockerfile
-# Builds a Python 3.11-based container and runs the FastAPI app with Uvicorn.
+# Builds a Python 3.12-based container and runs the FastAPI app with Uvicorn.
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app

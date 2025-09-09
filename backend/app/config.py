@@ -1,7 +1,7 @@
 # Configuration for AURA Voice AI
 # Voice pipeline settings and configuration
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 from dotenv import load_dotenv
 import os
@@ -29,7 +29,12 @@ if not env_loaded:
     print("⚠️ No .env file found, using environment variables only")
 
 class Settings(BaseSettings):
-    # Simple configuration - use .env file for secrets
+    # allow .env extras so we don't crash on unused vars
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # <--- this is the key line
+    )
     
     # API Keys
     GROK_API_KEY: str = os.getenv("GROK_API_KEY", "")
@@ -59,10 +64,6 @@ class Settings(BaseSettings):
     # YOUTUBE_API_KEY: Optional[str] = None
     # LINKEDIN_ACCESS_TOKEN: Optional[str] = None
     # X_BEARER_TOKEN: Optional[str] = None
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = 'utf-8'
 
 # Create global settings instance
 settings = Settings()

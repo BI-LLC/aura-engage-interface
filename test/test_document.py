@@ -49,7 +49,7 @@ def create_test_documents():
 AURA is designed to be a personal AI assistant that learns from your documents.
 
 ## Technical Stack
-- **Backend**: FastAPI, Python 3.11
+- **Backend**: FastAPI, Python 3.12
 - **LLMs**: Grok-4, GPT-4-turbo
 - **Voice**: Whisper (STT), ElevenLabs (TTS)
 - **Storage**: Redis for sessions, filesystem for documents
