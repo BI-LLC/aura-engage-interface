@@ -1,7 +1,36 @@
-// Aura API Service - Real-time voice communication with Aura backend
-// Implements the audio processing pipeline from your developer guide
+// Aura API Service - Real-time voice communication with local backend
+// Updated to connect to the backend-copy repository
 
-// Simple browser-compatible EventEmitter
+// Configuration constants - Connect to local backend
+const AURA_API_BASE = 'http://localhost:8000';
+const WEBSOCKET_URL = `ws://localhost:8000/ws/voice/continuous`;
+
+// Demo token for testing (in production this would come from authentication)
+const DEMO_TOKEN = 'demo_token';
+
+// Type definitions
+export interface AuraMessage {
+  id: string;
+  type: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  audio?: string;
+}
+
+export interface AuraStatus {
+  status: 'idle' | 'listening' | 'thinking' | 'responding' | 'muted' | 'connecting' | 'error';
+  isConnected: boolean;
+  error?: string;
+}
+
+// Extend Window interface for auraLogs
+declare global {
+  interface Window {
+    auraLogs?: Array<{ timestamp: string; level: string; message: string; data?: any }>;
+  }
+}
+
+// Simple EventEmitter for compatibility
 class SimpleEventEmitter {
   private events: Record<string, Function[]> = {};
 
@@ -23,58 +52,40 @@ class SimpleEventEmitter {
   }
 }
 
-export interface AuraMessage {
-  id: string;
-  type: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  audio?: string; // Base64 encoded audio data
-}
+// Logging utility
+const log = (level: 'info' | 'warn' | 'error', message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] [AuraAPI] ${message}`;
+  
+  console[level](logMessage, data || '');
+  
+  // Store logs for diagnostics
+  if (!window.auraLogs) window.auraLogs = [];
+  window.auraLogs.push({ timestamp, level, message, data });
+  
+  // Keep only last 100 logs
+  if (window.auraLogs.length > 100) {
+    window.auraLogs = window.auraLogs.slice(-100);
+  }
+};
 
-export interface AuraStatus {
-  status: 'idle' | 'listening' | 'thinking' | 'responding' | 'muted' | 'connecting' | 'error';
-  isConnected: boolean;
-  error?: string;
-}
-
-export interface AudioSettings {
-  sampleRate: number;
-  channels: number;
-  bitsPerSample: number;
-}
-
-export class AuraAPIService extends SimpleEventEmitter {
+class AuraAPI extends SimpleEventEmitter {
   private ws: WebSocket | null = null;
-  private audioContext: AudioContext | null = null;
-  private scriptProcessor: ScriptProcessorNode | null = null;
-  private audioStream: MediaStream | null = null;
+  private connected = false;
+  private shouldReconnect = true;
   private status: AuraStatus = { status: 'idle', isConnected: false };
-  private reconnectTimeout: number | null = null;
-  private audioQueue: AudioBuffer[] = [];
-  private isPlayingAudio = false;
+  private audioContext: AudioContext | null = null;
+  private audioStream: MediaStream | null = null;
 
-  // Updated to use ngrok tunnel for SSL support
-  private readonly BACKEND_URL = 'wss://f3d437906df7.ngrok-free.app/ws/voice/continuous';
-  private readonly AUDIO_SETTINGS: AudioSettings = {
-    sampleRate: 16000, // 16kHz as specified in your guide
-    channels: 1,       // Mono
-    bitsPerSample: 16  // 16-bit PCM
-  };
+  // Event handlers
+  onResponse?: (text: string) => void;
+  onAudio?: (audioBase64: string) => void;
+  onError?: (error: string) => void;
+  onUserTranscript?: (text: string) => void;
 
   constructor() {
     super();
-    this.initializeAudioContext();
-  }
-
-  private async initializeAudioContext() {
-    try {
-      this.audioContext = new AudioContext({
-        sampleRate: this.AUDIO_SETTINGS.sampleRate
-      });
-    } catch (error) {
-      console.error('Failed to initialize audio context:', error);
-      this.updateStatus({ status: 'error', isConnected: false, error: 'Audio initialization failed' });
-    }
+    log('info', 'AuraAPI initialized for local backend connection');
   }
 
   private updateStatus(newStatus: Partial<AuraStatus>) {
@@ -82,215 +93,214 @@ export class AuraAPIService extends SimpleEventEmitter {
     this.emit('status', this.status);
   }
 
-  async connect() {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+  // Legacy method for compatibility with useAura hook
+  async connect(): Promise<void> {
+    return this.start();
+  }
 
-    console.log('🔌 Attempting to connect to:', this.BACKEND_URL);
-    this.updateStatus({ status: 'connecting' });
-
+  async start(): Promise<void> {
+    log('info', 'Starting AuraAPI connection to local backend...');
+    this.shouldReconnect = true;
+    
     try {
-      // Add ngrok headers if using ngrok tunnel
-      const isNgrok = this.BACKEND_URL.includes('ngrok');
-      console.log('📡 Using ngrok tunnel:', isNgrok);
-      
-      this.ws = new WebSocket(this.BACKEND_URL);
-      
-      this.ws.onopen = () => {
-        console.log('✅ Connected to Aura backend successfully');
-        this.updateStatus({ status: 'idle', isConnected: true });
-        this.clearReconnectTimeout();
-      };
-
-      this.ws.onmessage = (event) => {
-        console.log('📨 Received message:', event.data);
-        this.handleWebSocketMessage(event);
-      };
-
-      this.ws.onclose = (event) => {
-        console.log('🔌 Disconnected from Aura backend - Code:', event.code, 'Reason:', event.reason);
-        const errorMsg = event.code === 1006 ? 'Connection lost unexpectedly' : event.reason || 'Connection closed';
-        this.updateStatus({ status: 'idle', isConnected: false, error: errorMsg });
-        
-        // Only reconnect if it wasn't a manual close
-        if (event.code !== 1000) {
-          this.scheduleReconnect();
-        }
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('❌ WebSocket error:', error);
-        console.error('🔍 Error details - URL:', this.BACKEND_URL);
-        console.error('🔍 WebSocket state:', this.ws?.readyState);
-        this.updateStatus({ status: 'error', isConnected: false, error: 'Connection failed - check console for details' });
-      };
-
-    } catch (error) {
-      console.error('💥 Failed to create WebSocket connection:', error);
-      this.updateStatus({ status: 'error', isConnected: false, error: `Failed to initialize: ${error.message}` });
+      this.updateStatus({ status: 'connecting' });
+      await this.connectWebSocket();
+      this.updateStatus({ status: 'idle', isConnected: true });
+      log('info', 'AuraAPI started successfully');
+    } catch (error: any) {
+      this.updateStatus({ status: 'error', isConnected: false, error: error.message });
+      log('error', 'Failed to start AuraAPI', error);
+      throw new Error(`Failed to connect to local backend: ${error.message}`);
     }
   }
 
-  private handleWebSocketMessage(event: MessageEvent) {
-    try {
-      // Handle both binary and text messages based on your backend protocol
-      if (event.data instanceof ArrayBuffer) {
-        // Binary audio response from backend
-        this.handleBinaryAudioData(event.data);
-        return;
-      }
-
-      const data = JSON.parse(event.data);
-      
-      switch (data.type) {
-        case 'transcript':
-          this.emit('transcript', data.text);
-          break;
-          
-        case 'audio':
-          // Base64 encoded audio from backend
-          this.handleAudioData(data.audio);
-          break;
-          
-        case 'error':
-          console.error('Aura backend error:', data.text);
-          this.updateStatus({ status: 'error', error: data.text });
-          break;
-
-        default:
-          // Handle other message types as needed
-          console.log('Received message:', data);
-          break;
-      }
-    } catch (error) {
-      console.error('Failed to parse WebSocket message:', error);
-    }
-  }
-
-  private async handleBinaryAudioData(audioData: ArrayBuffer) {
-    if (!this.audioContext) return;
-
-    try {
-      // Create WAV header for PCM audio
-      const wavBuffer = this.createWAVFromPCM(audioData);
-      const audioBuffer = await this.audioContext.decodeAudioData(wavBuffer);
-      
-      this.audioQueue.push(audioBuffer);
-      if (!this.isPlayingAudio) {
-        this.playNextAudio();
-      }
-    } catch (error) {
-      console.error('Failed to process binary audio data:', error);
-    }
-  }
-
-  private async handleAudioData(base64Audio: string) {
-    if (!this.audioContext) return;
-
-    try {
-      // Convert base64 to ArrayBuffer
-      const binaryString = atob(base64Audio);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Create WAV header for PCM audio
-      const wavBuffer = this.createWAVFromPCM(bytes.buffer);
-      const audioBuffer = await this.audioContext.decodeAudioData(wavBuffer);
-      
-      this.audioQueue.push(audioBuffer);
-      if (!this.isPlayingAudio) {
-        this.playNextAudio();
-      }
-    } catch (error) {
-      console.error('Failed to process audio data:', error);
-    }
-  }
-
-  private createWAVFromPCM(pcmBuffer: ArrayBuffer): ArrayBuffer {
-    const pcmView = new DataView(pcmBuffer);
-    const wavBuffer = new ArrayBuffer(44 + pcmBuffer.byteLength);
-    const wavView = new DataView(wavBuffer);
-
-    // WAV header
-    const writeString = (offset: number, string: string) => {
-      for (let i = 0; i < string.length; i++) {
-        wavView.setUint8(offset + i, string.charCodeAt(i));
-      }
-    };
-
-    writeString(0, 'RIFF');
-    wavView.setUint32(4, 36 + pcmBuffer.byteLength, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    wavView.setUint32(16, 16, true);
-    wavView.setUint16(20, 1, true);
-    wavView.setUint16(22, this.AUDIO_SETTINGS.channels, true);
-    wavView.setUint32(24, this.AUDIO_SETTINGS.sampleRate, true);
-    wavView.setUint32(28, this.AUDIO_SETTINGS.sampleRate * 2, true);
-    wavView.setUint16(32, 2, true);
-    wavView.setUint16(34, this.AUDIO_SETTINGS.bitsPerSample, true);
-    writeString(36, 'data');
-    wavView.setUint32(40, pcmBuffer.byteLength, true);
-
-    // Copy PCM data
-    const pcmArray = new Uint8Array(pcmBuffer);
-    const wavArray = new Uint8Array(wavBuffer);
-    wavArray.set(pcmArray, 44);
-
-    return wavBuffer;
-  }
-
-  private async playNextAudio() {
-    if (this.audioQueue.length === 0) {
-      this.isPlayingAudio = false;
+  async connectWebSocket(): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      log('info', 'WebSocket already connected');
       return;
     }
 
-    this.isPlayingAudio = true;
-    const audioBuffer = this.audioQueue.shift()!;
+    return new Promise((resolve, reject) => {
+      try {
+        // Connect to local backend with authentication token
+        const wsUrl = `${WEBSOCKET_URL}?token=${encodeURIComponent(DEMO_TOKEN)}`;
+        
+        log('info', `Connecting to local backend WebSocket: ${wsUrl}`);
+        
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onopen = () => {
+          log('info', 'WebSocket connected to local backend successfully');
+          this.connected = true;
+          resolve();
+        };
 
-    try {
-      const source = this.audioContext!.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(this.audioContext!.destination);
-      
-      source.onended = () => {
-        this.playNextAudio();
-      };
-      
-      source.start(0);
-    } catch (error) {
-      console.error('Failed to play audio:', error);
-      this.playNextAudio(); // Continue with next audio
+        this.ws.onmessage = (event) => {
+          log('info', 'WebSocket message received', { 
+            type: typeof event.data,
+            size: event.data?.length || 0
+          });
+          
+          try {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+          } catch (e) {
+            log('warn', 'Failed to parse WebSocket message', event.data);
+          }
+        };
+
+        this.ws.onerror = (error) => {
+          log('error', 'WebSocket error occurred', error);
+          this.connected = false;
+          reject(new Error('WebSocket connection failed'));
+        };
+
+        this.ws.onclose = (event) => {
+          log('info', 'WebSocket connection closed', { 
+            code: event.code, 
+            reason: event.reason,
+            wasClean: event.wasClean 
+          });
+          this.connected = false;
+          
+          // Auto-reconnect after a delay if not a clean close
+          if (!event.wasClean && this.shouldReconnect) {
+            log('info', 'Attempting to reconnect in 3 seconds...');
+            setTimeout(() => {
+              if (this.shouldReconnect) {
+                this.connectWebSocket().catch(err => 
+                  log('error', 'Reconnection failed', err)
+                );
+              }
+            }, 3000);
+          }
+        };
+        
+        // Timeout for connection
+        setTimeout(() => {
+          if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+            log('error', 'WebSocket connection timeout');
+            this.ws.close();
+            reject(new Error('WebSocket connection timeout'));
+          }
+        }, 10000);
+        
+      } catch (error) {
+        log('error', 'Error creating WebSocket connection', error);
+        reject(error);
+      }
+    });
+  }
+
+  private handleMessage(data: any): void {
+    log('info', 'Processing WebSocket message', data);
+    
+    switch (data.type) {
+      case 'pong':
+        log('info', 'Received pong response');
+        break;
+        
+      case 'greeting':
+        log('info', 'Received greeting from AURA', { text: data.text });
+        if (this.onResponse && data.text) {
+          this.onResponse(data.text);
+        }
+        if (this.onAudio && data.audio) {
+          this.onAudio(data.audio);
+        }
+        // Emit message event for compatibility
+        this.emit('message', {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: data.text || 'Hello!',
+          timestamp: new Date(),
+          audio: data.audio
+        } as AuraMessage);
+        break;
+        
+      case 'user_transcript':
+        log('info', 'User speech transcribed', { text: data.text });
+        if (this.onUserTranscript) {
+          this.onUserTranscript(data.text);
+        }
+        // Emit transcript event
+        this.emit('transcript', data.text);
+        break;
+        
+      case 'ai_chunk':
+        log('info', 'Received AI response chunk', { text: data.text });
+        if (this.onResponse && data.text) {
+          this.onResponse(data.text);
+        }
+        break;
+        
+      case 'ai_complete':
+        log('info', 'AI response complete', { text: data.text?.substring(0, 50) });
+        // Emit message event for complete response
+        this.emit('message', {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: data.text || '',
+          timestamp: new Date()
+        } as AuraMessage);
+        break;
+        
+      case 'ai_audio':
+        log('info', 'Received AI audio', { duration: data.duration });
+        if (this.onAudio && data.audio) {
+          this.onAudio(data.audio);
+        }
+        // Emit audio event
+        this.emit('audio', data.audio);
+        break;
+        
+      case 'error':
+        log('error', 'Received error from server', data.message);
+        if (this.onError) {
+          this.onError(data.message || 'Unknown server error');
+        }
+        this.updateStatus({ status: 'error', error: data.message });
+        break;
+        
+      default:
+        log('warn', 'Unknown message type received', data);
     }
   }
 
-  async startListening() {
-    if (!this.audioContext || this.status.status === 'listening') return;
+  async startListening(): Promise<void> {
+    if (!this.connected) {
+      throw new Error('Not connected to backend');
+    }
 
     try {
-      // Get microphone access with 16kHz configuration
+      // Initialize audio context if needed
+      if (!this.audioContext) {
+        this.audioContext = new AudioContext({ sampleRate: 16000 });
+      }
+
+      // Get microphone access
       this.audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: this.AUDIO_SETTINGS.sampleRate,
-          channelCount: this.AUDIO_SETTINGS.channels,
+          sampleRate: 16000,
+          channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
         }
       });
 
-      // Use ScriptProcessor for real-time audio streaming (as per your guide)
-      const source = this.audioContext.createMediaStreamSource(this.audioStream);
-      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      this.updateStatus({ status: 'listening' });
+      log('info', 'Started listening for audio input');
 
-      // Real-time audio processing and streaming
-      this.scriptProcessor.onaudioprocess = (event) => {
+      // Set up audio processing for continuous streaming
+      const source = this.audioContext.createMediaStreamSource(this.audioStream);
+      const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+      processor.onaudioprocess = (event) => {
         const inputData = event.inputBuffer.getChannelData(0);
         const int16Array = new Int16Array(inputData.length);
         
-        // Convert Float32 to Int16 (as specified in your guide)
+        // Convert Float32 to Int16
         for (let i = 0; i < inputData.length; i++) {
           int16Array[i] = inputData[i] * 32767;
         }
@@ -301,43 +311,75 @@ export class AuraAPIService extends SimpleEventEmitter {
         }
       };
 
-      source.connect(this.scriptProcessor);
-      this.scriptProcessor.connect(this.audioContext.destination);
+      source.connect(processor);
+      processor.connect(this.audioContext.destination);
 
-      this.updateStatus({ status: 'listening' });
-      
     } catch (error) {
-      console.error('Failed to start listening:', error);
+      log('error', 'Failed to start listening', error);
       this.updateStatus({ status: 'error', error: 'Microphone access denied' });
+      throw error;
     }
   }
 
-  stopListening() {
-    if (this.scriptProcessor) {
-      this.scriptProcessor.disconnect();
-      this.scriptProcessor = null;
-    }
-    
+  stopListening(): void {
     if (this.audioStream) {
       this.audioStream.getTracks().forEach(track => track.stop());
       this.audioStream = null;
     }
 
     this.updateStatus({ status: 'idle' });
+    log('info', 'Stopped listening for audio input');
   }
 
-  sendTextMessage(text: string) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+  async sendAudio(audioBlob: Blob): Promise<void> {
+    if (!this.connected || !this.ws) {
+      throw new Error('WebSocket not connected');
+    }
 
-    // Send text message as JSON (for non-audio messages)
-    const message = {
+    try {
+      log('info', 'Sending audio to backend', { size: audioBlob.size, type: audioBlob.type });
+      
+      // Convert blob to raw bytes for backend processing
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Send binary audio data directly to backend
+      this.ws.send(uint8Array);
+      
+      log('info', 'Audio sent successfully as binary data');
+    } catch (error) {
+      log('error', 'Error sending audio', error);
+      throw error;
+    }
+  }
+
+  sendMessage(message: any): void {
+    if (!this.connected || !this.ws) {
+      log('warn', 'Cannot send message: WebSocket not connected');
+      return;
+    }
+
+    try {
+      this.ws.send(JSON.stringify(message));
+      log('info', 'Message sent successfully', message);
+    } catch (error) {
+      log('error', 'Error sending message', error);
+    }
+  }
+
+  // Legacy method for compatibility
+  sendTextMessage(text: string): void {
+    this.sendText(text);
+  }
+
+  async sendText(text: string): Promise<void> {
+    // For text-only messages, we can send them as JSON
+    this.sendMessage({
       type: 'text',
       text: text
-    };
+    });
 
-    this.ws.send(JSON.stringify(message));
-    
-    // Emit user message
+    // Emit user message event
     this.emit('message', {
       id: Date.now().toString(),
       type: 'user',
@@ -346,27 +388,29 @@ export class AuraAPIService extends SimpleEventEmitter {
     } as AuraMessage);
   }
 
-  private scheduleReconnect() {
-    this.clearReconnectTimeout();
-    this.reconnectTimeout = window.setTimeout(() => {
-      console.log('Attempting to reconnect to Aura backend...');
-      this.connect();
-    }, 3000);
-  }
-
-  private clearReconnectTimeout() {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
+  async endCall(): Promise<void> {
+    log('info', 'Ending call...');
+    
+    if (this.ws) {
+      this.sendMessage({ type: 'end_call' });
+      
+      // Give time for the message to send, then close
+      setTimeout(() => {
+        this.disconnect();
+      }, 500);
     }
   }
 
-  disconnect() {
+  disconnect(): void {
+    log('info', 'Disconnecting from backend...');
+    
+    this.shouldReconnect = false;
+    this.connected = false;
+    
     this.stopListening();
-    this.clearReconnectTimeout();
     
     if (this.ws) {
-      this.ws.close();
+      this.ws.close(1000, 'Client disconnect');
       this.ws = null;
     }
     
@@ -376,78 +420,91 @@ export class AuraAPIService extends SimpleEventEmitter {
     }
 
     this.updateStatus({ status: 'idle', isConnected: false });
+    log('info', 'Disconnected successfully');
   }
 
   getStatus(): AuraStatus {
     return this.status;
   }
 
-  // Diagnostic methods for debugging
   async testConnection(): Promise<{ success: boolean; error?: string; details: any }> {
-    console.log('🧪 Testing connection to:', this.BACKEND_URL);
-    
     try {
-      // Test basic connectivity
-      const url = new URL(this.BACKEND_URL);
-      const httpUrl = `https://${url.host}`;
+      log('info', 'Testing backend connection...');
       
-      console.log('🌐 Testing HTTP endpoint:', httpUrl);
+      // Test basic HTTP connectivity first
+      const response = await fetch(`${AURA_API_BASE}/`);
+      const isHttpReachable = response.ok;
       
-      const response = await fetch(httpUrl, { method: 'HEAD' });
-      console.log('📊 HTTP Response:', response.status, response.statusText);
+      // Test WebSocket connection
+      await this.connectWebSocket();
       
-      // Test WebSocket
-      return new Promise((resolve) => {
-        const testWs = new WebSocket(this.BACKEND_URL);
-        const timeout = setTimeout(() => {
-          testWs.close();
-          resolve({
-            success: false,
-            error: 'Connection timeout',
-            details: { httpStatus: response.status, timeout: true }
-          });
-        }, 5000);
-        
-        testWs.onopen = () => {
-          clearTimeout(timeout);
-          testWs.close();
-          resolve({
-            success: true,
-            details: { httpStatus: response.status }
-          });
-        };
-        
-        testWs.onerror = (error) => {
-          clearTimeout(timeout);
-          resolve({
-            success: false,
-            error: 'WebSocket connection failed',
-            details: { httpStatus: response.status, wsError: error }
-          });
-        };
-      });
-      
-    } catch (error) {
-      console.error('🚫 Connection test failed:', error);
-      return {
-        success: false,
-        error: error.message,
-        details: { error }
+      const testResult = {
+        success: true,
+        details: {
+          httpReachable: isHttpReachable,
+          websocketConnected: this.connected,
+          url: WEBSOCKET_URL,
+          backendUrl: AURA_API_BASE,
+          token: DEMO_TOKEN,
+          timestamp: new Date().toISOString()
+        }
       };
+      
+      log('info', 'Backend connection test completed successfully', testResult);
+      return testResult;
+      
+    } catch (error: any) {
+      const testResult = {
+        success: false,
+        error: error.message || 'Unknown error',
+        details: {
+          httpReachable: false,
+          websocketConnected: false,
+          url: WEBSOCKET_URL,
+          backendUrl: AURA_API_BASE,
+          timestamp: new Date().toISOString(),
+          errorDetails: error
+        }
+      };
+      
+      log('error', 'Backend connection test failed', testResult);
+      return testResult;
     }
   }
 
-  getDiagnostics() {
-    return {
-      backendUrl: this.BACKEND_URL,
-      wsState: this.ws?.readyState,
-      wsStateText: this.ws ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][this.ws.readyState] : 'NULL',
-      status: this.status,
-      audioContext: this.audioContext?.state,
-      isNgrok: this.BACKEND_URL.includes('ngrok')
+  getDiagnostics(): any {
+    const diagnostics = {
+      connection: {
+        connected: this.connected,
+        websocketState: this.ws?.readyState,
+        url: WEBSOCKET_URL,
+        backendUrl: AURA_API_BASE,
+        shouldReconnect: this.shouldReconnect,
+        token: DEMO_TOKEN
+      },
+      audio: {
+        contextState: this.audioContext?.state,
+        deviceSupport: !!navigator.mediaDevices?.getUserMedia
+      },
+      browser: {
+        userAgent: navigator.userAgent,
+        webSocketSupport: !!window.WebSocket
+      },
+      logs: window.auraLogs?.slice(-10) || [],
+      timestamp: new Date().toISOString()
     };
+    
+    log('info', 'Generated diagnostics', diagnostics);
+    return diagnostics;
+  }
+
+  isConnected(): boolean {
+    return this.connected && this.ws?.readyState === WebSocket.OPEN;
   }
 }
 
-// Singleton instance
-export const auraAPI = new AuraAPIService();
+// Create and export singleton instance
+export const auraAPI = new AuraAPI();
+
+// Export the class for type checking
+export default AuraAPI;
