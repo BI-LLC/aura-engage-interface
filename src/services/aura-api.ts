@@ -54,7 +54,7 @@ export class AuraAPIService extends SimpleEventEmitter {
   private isPlayingAudio = false;
 
   // Updated to match your backend specifications
-  private readonly BACKEND_URL = 'ws://localhost:8880/ws/voice/continuous';
+  private readonly BACKEND_URL = 'ws://157.245.192.221:8880/ws/voice/continuous';
   private readonly AUDIO_SETTINGS: AudioSettings = {
     sampleRate: 16000, // 16kHz as specified in your guide
     channels: 1,       // Mono
