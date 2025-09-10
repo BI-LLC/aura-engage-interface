@@ -28,6 +28,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isTalkModeActive, setIsTalkModeActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [waveformBars] = useState(Array.from({ length: 5 }, (_, i) => i));
   
   // Use Aura API hook
@@ -180,6 +181,30 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
 
         {!isMinimized ? (
           <CardContent className="p-4 space-y-4">
+            {/* Welcome Message */}
+            {showWelcome && conversation.length === 0 && (
+              <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-4 border border-primary/20">
+                <div className="flex items-start justify-between mb-2">
+                  <h4 className="font-semibold text-primary">Welcome to Aura! 👋</h4>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowWelcome(false)}
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Your AI voice assistant is ready to chat! Aura can have natural conversations using voice or text.
+                </p>
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  <p>• <strong>Click "Call"</strong> to start a voice conversation</p>
+                  <p>• <strong>Speak naturally</strong> - Aura will listen and respond</p>
+                  <p>• <strong>End the call</strong> anytime by clicking "End Talk"</p>
+                </div>
+              </div>
+            )}
 
             {/* Status Indicator with Enhanced Visual Feedback */}
             <div className="flex items-center justify-between">
@@ -320,7 +345,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                 ) : (
                   <>
                     <Phone className="w-4 h-4 mr-2" />
-                    {status.isConnected ? 'Start Talking' : 'Reconnect'}
+                    {status.isConnected ? 'Start Talking' : 'Call'}
                   </>
                 )}
               </Button>

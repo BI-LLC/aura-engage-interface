@@ -5,8 +5,8 @@
 const AURA_API_BASE = 'http://localhost:8000';
 const WEBSOCKET_URL = `ws://localhost:8000/ws/voice/continuous`;
 
-// Create a simple test user token (matching backend auth format)
-const DEMO_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoidGVzdF91c2VyIiwidGVuYW50X2lkIjoidGVzdF90ZW5hbnQiLCJlbWFpbCI6InRlc3RAdGVzdC5jb20ifQ.test';
+// Simple demo token matching backend test expectations
+const DEMO_TOKEN = 'demo_token';
 
 // Type definitions
 export interface AuraMessage {
