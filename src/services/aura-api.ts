@@ -1,12 +1,12 @@
 // Aura API Service - Real-time voice communication with local backend
 // Updated to connect to the backend-copy repository
-import jwt from 'jsonwebtoken';
+import { SignJWT } from 'jose';
 
 // Configuration constants - Connect to local backend
 const AURA_API_BASE = 'http://localhost:8000';
 
 // Generate a proper JWT token matching backend requirements
-function generateDemoToken(): string {
+async function generateDemoToken(): Promise<string> {
   const payload = {
     user_id: 'demo_user_123',
     tenant_id: 'demo_tenant_123',
@@ -16,8 +16,14 @@ function generateDemoToken(): string {
   };
   
   // Use the same secret key as the backend
-  const secret = 'your-secret-key-change-in-production';
-  return jwt.sign(payload, secret, { algorithm: 'HS256' });
+  const secret = new TextEncoder().encode('your-secret-key-change-in-production');
+  
+  const token = await new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('7d')
+    .sign(secret);
+    
+  return token;
 }
 
 // Type definitions
@@ -132,14 +138,14 @@ class AuraAPI extends SimpleEventEmitter {
       return;
     }
 
-    return new Promise((resolve, reject) => {
-      try {
-        // Generate fresh token for each connection and connect to local backend
-        const token = generateDemoToken();
-        const wsUrl = `ws://localhost:8000/ws/voice/continuous?token=${encodeURIComponent(token)}`;
-        
-        log('info', `Connecting to local backend WebSocket with JWT auth: ${wsUrl.split('?')[0]}...`);
-        
+    try {
+      // Generate fresh token for each connection and connect to local backend
+      const token = await generateDemoToken();
+      const wsUrl = `ws://localhost:8000/ws/voice/continuous?token=${encodeURIComponent(token)}`;
+      
+      log('info', `Connecting to local backend WebSocket with JWT auth: ${wsUrl.split('?')[0]}...`);
+      
+      return new Promise((resolve, reject) => {
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
@@ -224,17 +230,17 @@ class AuraAPI extends SimpleEventEmitter {
             reject(new Error('Backend connection timeout. Please start the backend server with: cd backend-copy && docker-compose up'));
           }
         }, 15000); // Increased timeout for backend startup
-        
-      } catch (error) {
-        log('error', 'Error creating WebSocket connection', error);
-        this.updateStatus({ 
-          status: 'error', 
-          isConnected: false, 
-          error: 'Failed to create connection' 
-        });
-        reject(error);
-      }
-    });
+      });
+      
+    } catch (error) {
+      log('error', 'Error creating WebSocket connection', error);
+      this.updateStatus({ 
+        status: 'error', 
+        isConnected: false, 
+        error: 'Failed to create connection' 
+      });
+      throw error;
+    }
   }
 
   private handleMessage(data: any): void {
