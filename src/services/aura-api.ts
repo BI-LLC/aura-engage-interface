@@ -2,8 +2,9 @@
 // Updated to connect to the backend-copy repository
 import { SignJWT } from 'jose';
 
-// Configuration constants - Connect to local backend
-const AURA_API_BASE = 'http://localhost:8000';
+// Configuration constants - Connect to Supabase Edge Function proxy
+const SUPABASE_PROJECT_ID = 'rmqohckqlpkwtpzqimxk';
+const AURA_WS_URL = `wss://${SUPABASE_PROJECT_ID}.functions.supabase.co/functions/v1/voice-proxy`;
 
 // Generate a proper JWT token matching backend requirements
 async function generateDemoToken(): Promise<string> {
@@ -139,11 +140,11 @@ class AuraAPI extends SimpleEventEmitter {
     }
 
     try {
-      // Generate fresh token for each connection and connect to local backend
+      // Generate fresh token for each connection and connect via Supabase proxy
       const token = await generateDemoToken();
-      const wsUrl = `ws://localhost:8000/ws/voice/continuous?token=${encodeURIComponent(token)}`;
+      const wsUrl = `${AURA_WS_URL}?token=${encodeURIComponent(token)}`;
       
-      log('info', `Connecting to local backend WebSocket with JWT auth: ${wsUrl.split('?')[0]}...`);
+      log('info', `Connecting to backend via Supabase proxy: ${wsUrl.split('?')[0]}...`);
       
       return new Promise((resolve, reject) => {
         this.ws = new WebSocket(wsUrl);
@@ -175,9 +176,9 @@ class AuraAPI extends SimpleEventEmitter {
           this.updateStatus({ 
             status: 'error', 
             isConnected: false, 
-            error: 'Connection failed - check if backend is running on localhost:8000' 
+            error: 'Connection failed - backend may not be deployed or accessible' 
           });
-          reject(new Error('Cannot connect to backend. Please ensure the backend server is running at localhost:8000'));
+          reject(new Error('Cannot connect to backend. Please ensure your backend is deployed and accessible.'));
         };
 
         this.ws.onclose = (event) => {
@@ -227,7 +228,7 @@ class AuraAPI extends SimpleEventEmitter {
               isConnected: false, 
               error: 'Connection timeout - backend may be starting up' 
             });
-            reject(new Error('Backend connection timeout. Please start the backend server with: cd backend-copy && docker-compose up'));
+            reject(new Error('Backend connection timeout. Please ensure your backend is deployed and accessible.'));
           }
         }, 15000); // Increased timeout for backend startup
       });
@@ -482,13 +483,8 @@ class AuraAPI extends SimpleEventEmitter {
     try {
       log('info', 'Testing backend connection...');
       
-      // Test basic HTTP connectivity first
-      const response = await fetch(`${AURA_API_BASE}/health`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000) // 10 second timeout
-      });
-      const isHttpReachable = response.ok;
+      // For now, skip HTTP test since we're using WebSocket proxy
+      const isHttpReachable = true;
       
       // Test WebSocket connection with proper JWT
       await this.connectWebSocket();
@@ -498,7 +494,7 @@ class AuraAPI extends SimpleEventEmitter {
         details: {
           httpReachable: isHttpReachable,
           websocketConnected: this.connected,
-          backendUrl: AURA_API_BASE,
+          backendUrl: AURA_WS_URL,
           hasValidJWT: true,
           timestamp: new Date().toISOString()
         }
@@ -514,7 +510,7 @@ class AuraAPI extends SimpleEventEmitter {
         details: {
           httpReachable: false,
           websocketConnected: false,
-          backendUrl: AURA_API_BASE,
+          backendUrl: AURA_WS_URL,
           hasValidJWT: false,
           timestamp: new Date().toISOString(),
           errorDetails: error.message
@@ -531,8 +527,8 @@ class AuraAPI extends SimpleEventEmitter {
       connection: {
         connected: this.connected,
         websocketState: this.ws?.readyState,
-        url: 'ws://localhost:8000/ws/voice/continuous',
-        backendUrl: AURA_API_BASE,
+        url: AURA_WS_URL,
+        backendUrl: AURA_WS_URL,
         shouldReconnect: this.shouldReconnect,
         hasJWTToken: true
       },

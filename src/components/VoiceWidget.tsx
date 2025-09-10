@@ -275,8 +275,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                 <div className="flex flex-col items-center justify-center text-center space-y-2">
                   <AlertCircle className="w-8 h-8 text-destructive" />
                   <p className="text-xs text-destructive px-2">
-                    Backend not running. Start with: <br/>
-                    <code className="text-xs bg-muted px-1 rounded">cd backend-copy && docker-compose up</code>
+                    {status.error || 'Connection error - please check your backend deployment'}
                   </p>
                 </div>
               )}
