@@ -1,12 +1,24 @@
 // Aura API Service - Real-time voice communication with local backend
 // Updated to connect to the backend-copy repository
+import jwt from 'jsonwebtoken';
 
 // Configuration constants - Connect to local backend
 const AURA_API_BASE = 'http://localhost:8000';
-const WEBSOCKET_URL = `ws://localhost:8000/ws/voice/continuous`;
 
-// Simple demo token matching backend test expectations
-const DEMO_TOKEN = 'demo_token';
+// Generate a proper JWT token matching backend requirements
+function generateDemoToken(): string {
+  const payload = {
+    user_id: 'demo_user_123',
+    tenant_id: 'demo_tenant_123',
+    role: 'user',
+    organization: 'Demo Organization',
+    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days from now
+  };
+  
+  // Use the same secret key as the backend
+  const secret = 'your-secret-key-change-in-production';
+  return jwt.sign(payload, secret, { algorithm: 'HS256' });
+}
 
 // Type definitions
 export interface AuraMessage {
@@ -122,16 +134,18 @@ class AuraAPI extends SimpleEventEmitter {
 
     return new Promise((resolve, reject) => {
       try {
-        // Connect to local backend with authentication token
-        const wsUrl = `${WEBSOCKET_URL}?token=${encodeURIComponent(DEMO_TOKEN)}`;
+        // Generate fresh token for each connection and connect to local backend
+        const token = generateDemoToken();
+        const wsUrl = `ws://localhost:8000/ws/voice/continuous?token=${encodeURIComponent(token)}`;
         
-        log('info', `Connecting to local backend WebSocket: ${wsUrl}`);
+        log('info', `Connecting to local backend WebSocket with JWT auth: ${wsUrl.split('?')[0]}...`);
         
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
           log('info', 'WebSocket connected to local backend successfully');
           this.connected = true;
+          this.updateStatus({ status: 'idle', isConnected: true, error: undefined });
           resolve();
         };
 
@@ -152,6 +166,11 @@ class AuraAPI extends SimpleEventEmitter {
         this.ws.onerror = (error) => {
           log('error', 'WebSocket error occurred', error);
           this.connected = false;
+          this.updateStatus({ 
+            status: 'error', 
+            isConnected: false, 
+            error: 'Connection failed - check if backend is running on localhost:8000' 
+          });
           reject(new Error('Cannot connect to backend. Please ensure the backend server is running at localhost:8000'));
         };
 
@@ -163,8 +182,24 @@ class AuraAPI extends SimpleEventEmitter {
           });
           this.connected = false;
           
-          // Auto-reconnect after a delay if not a clean close
-          if (!event.wasClean && this.shouldReconnect) {
+          // Handle different close reasons
+          let errorMessage = 'Disconnected';
+          if (event.code === 1006) {
+            errorMessage = 'Connection lost - backend may be down';
+          } else if (event.code === 1008 || event.code === 4001) {
+            errorMessage = 'Authentication failed - invalid token';
+          } else if (event.code === 1011) {
+            errorMessage = 'Backend error occurred';
+          }
+          
+          this.updateStatus({ 
+            status: 'error', 
+            isConnected: false, 
+            error: errorMessage 
+          });
+          
+          // Auto-reconnect after a delay if not an auth error
+          if (!event.wasClean && this.shouldReconnect && event.code !== 1008 && event.code !== 4001) {
             log('info', 'Attempting to reconnect in 3 seconds...');
             setTimeout(() => {
               if (this.shouldReconnect) {
@@ -181,12 +216,22 @@ class AuraAPI extends SimpleEventEmitter {
           if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
             log('error', 'WebSocket connection timeout');
             this.ws.close();
+            this.updateStatus({ 
+              status: 'error', 
+              isConnected: false, 
+              error: 'Connection timeout - backend may be starting up' 
+            });
             reject(new Error('Backend connection timeout. Please start the backend server with: cd backend-copy && docker-compose up'));
           }
-        }, 5000);
+        }, 15000); // Increased timeout for backend startup
         
       } catch (error) {
         log('error', 'Error creating WebSocket connection', error);
+        this.updateStatus({ 
+          status: 'error', 
+          isConnected: false, 
+          error: 'Failed to create connection' 
+        });
         reject(error);
       }
     });
@@ -432,10 +477,14 @@ class AuraAPI extends SimpleEventEmitter {
       log('info', 'Testing backend connection...');
       
       // Test basic HTTP connectivity first
-      const response = await fetch(`${AURA_API_BASE}/`);
+      const response = await fetch(`${AURA_API_BASE}/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
       const isHttpReachable = response.ok;
       
-      // Test WebSocket connection
+      // Test WebSocket connection with proper JWT
       await this.connectWebSocket();
       
       const testResult = {
@@ -443,9 +492,8 @@ class AuraAPI extends SimpleEventEmitter {
         details: {
           httpReachable: isHttpReachable,
           websocketConnected: this.connected,
-          url: WEBSOCKET_URL,
           backendUrl: AURA_API_BASE,
-          token: DEMO_TOKEN,
+          hasValidJWT: true,
           timestamp: new Date().toISOString()
         }
       };
@@ -460,10 +508,10 @@ class AuraAPI extends SimpleEventEmitter {
         details: {
           httpReachable: false,
           websocketConnected: false,
-          url: WEBSOCKET_URL,
           backendUrl: AURA_API_BASE,
+          hasValidJWT: false,
           timestamp: new Date().toISOString(),
-          errorDetails: error
+          errorDetails: error.message
         }
       };
       
@@ -477,10 +525,10 @@ class AuraAPI extends SimpleEventEmitter {
       connection: {
         connected: this.connected,
         websocketState: this.ws?.readyState,
-        url: WEBSOCKET_URL,
+        url: 'ws://localhost:8000/ws/voice/continuous',
         backendUrl: AURA_API_BASE,
         shouldReconnect: this.shouldReconnect,
-        token: DEMO_TOKEN
+        hasJWTToken: true
       },
       audio: {
         contextState: this.audioContext?.state,
