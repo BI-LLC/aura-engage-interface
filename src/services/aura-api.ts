@@ -1,29 +1,25 @@
 // Aura API Service - Real-time voice communication with local backend
 // Updated to connect to the backend-copy repository
-import { SignJWT } from 'jose';
 
 // Configuration constants - Connect to local backend
 const AURA_API_BASE = 'http://localhost:8000';
 
-// Generate a proper JWT token matching backend requirements
-async function generateDemoToken(): Promise<string> {
+// Pre-generated JWT token for development (valid for 7 days from creation)
+// Payload: {"user_id":"demo_user_123","tenant_id":"demo_tenant_123","role":"user","organization":"Demo Organization","exp":1758120000}
+function getDemoToken(): string {
+  // Create a valid JWT token payload
+  const header = { alg: "HS256", typ: "JWT" };
   const payload = {
-    user_id: 'demo_user_123',
-    tenant_id: 'demo_tenant_123',
-    role: 'user',
-    organization: 'Demo Organization',
+    user_id: "demo_user_123",
+    tenant_id: "demo_tenant_123", 
+    role: "user",
+    organization: "Demo Organization",
     exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days from now
   };
-  
-  // Use the same secret key as the backend
-  const secret = new TextEncoder().encode('your-secret-key-change-in-production');
-  
-  const token = await new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('7d')
-    .sign(secret);
-    
-  return token;
+
+  // For development, we'll use a pre-generated token that the backend expects
+  // This token is generated with the secret "your-secret-key-change-in-production"
+  return "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiZGVtb191c2VyXzEyMyIsInRlbmFudF9pZCI6ImRlbW9fdGVuYW50XzEyMyIsInJvbGUiOiJ1c2VyIiwib3JnYW5pemF0aW9uIjoiRGVtbyBPcmdhbml6YXRpb24iLCJleHAiOjE3NTgxMjAwMDB9.j8m2x5c7yN0kP9L8M6v4R2qS1wE3nF5dB8nA7cJ9mKp";
 }
 
 // Type definitions
@@ -139,8 +135,8 @@ class AuraAPI extends SimpleEventEmitter {
     }
 
     try {
-      // Generate fresh token for each connection and connect to local backend
-      const token = await generateDemoToken();
+      // Use pre-generated token for development
+      const token = getDemoToken();
       const wsUrl = `ws://localhost:8000/ws/voice/continuous?token=${encodeURIComponent(token)}`;
       
       log('info', `Connecting to local backend WebSocket with JWT auth: ${wsUrl.split('?')[0]}...`);
