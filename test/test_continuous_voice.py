@@ -1,98 +1,126 @@
 #!/usr/bin/env python3
 """
-Test script for continuous voice conversation system
+Simplest real-time conversation test
+No files, just streaming audio
 """
 
-import asyncio
-import websockets
-import json
-import logging
+import pyaudio
+import requests
+import base64
+import numpy as np
+import pygame
+import io
+import time
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+pygame.mixer.init()
 
-async def test_continuous_voice():
-    """Test the continuous voice WebSocket endpoint"""
-    
-    # Test WebSocket connection
-    uri = "ws://localhost:8000/ws/voice/continuous?token=demo_token"
-    
-    try:
-        logger.info(f"Connecting to {uri}")
+class QuickVoiceChat:
+    def __init__(self):
+        self.p = pyaudio.PyAudio()
+        self.backend = "http://localhost:8000"
         
-        async with websockets.connect(uri) as websocket:
-            logger.info("✅ WebSocket connected successfully!")
+    def listen_and_respond(self):
+        """Record, process, and play response immediately"""
+        
+        # Recording settings
+        CHUNK = 1024
+        FORMAT = pyaudio.paInt16
+        CHANNELS = 1
+        RATE = 16000
+        
+        print("\n🎤 Listening... (speak now)")
+        
+        # Start recording
+        stream = self.p.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=CHUNK
+        )
+        
+        frames = []
+        silence_count = 0
+        
+        # Record until silence
+        while True:
+            data = stream.read(CHUNK)
+            frames.append(data)
             
-            # Wait for greeting message
-            try:
-                greeting = await asyncio.wait_for(websocket.recv(), timeout=5.0)
-                logger.info(f"📨 Received greeting: {greeting}")
-                
-                # Send a test message
-                test_message = {"type": "ping"}
-                await websocket.send(json.dumps(test_message))
-                logger.info("📤 Sent ping message")
-                
-                # Wait for response
-                response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
-                logger.info(f"📨 Received response: {response}")
-                
-                # Send end call
-                end_message = {"type": "end_call"}
-                await websocket.send(json.dumps(end_message))
-                logger.info("📤 Sent end call message")
-                
-            except asyncio.TimeoutError:
-                logger.error("❌ Timeout waiting for response")
-                
-    except Exception as e:
-        logger.error(f"❌ WebSocket connection failed: {e}")
-
-async def test_voice_pipeline():
-    """Test the voice pipeline components"""
-    
-    try:
-        from app.services.voice_pipeline import VoicePipeline
-        
-        # Initialize voice pipeline
-        pipeline = VoicePipeline()
-        
-        # Check status
-        status = pipeline.get_pipeline_status()
-        logger.info(f"🎤 Voice pipeline status: {status}")
-        
-        # Test TTS
-        if status["elevenlabs_available"]:
-            logger.info("Testing text-to-speech...")
-            result = await pipeline.synthesize_speech("Hello, this is a test of the voice system.")
-            if result.audio_base64:
-                logger.info(f"✅ TTS successful: {len(result.audio_base64)} chars")
+            # Check volume
+            audio_array = np.frombuffer(data, dtype=np.int16)
+            volume = np.abs(audio_array).mean()
+            
+            if volume < 500:  # Silence threshold
+                silence_count += 1
+                if silence_count > 20:  # ~1 second of silence
+                    break
             else:
-                logger.error("❌ TTS failed")
-        else:
-            logger.warning("⚠️ ElevenLabs not available")
+                silence_count = 0
+        
+        stream.stop_stream()
+        stream.close()
+        
+        print("⏹️  Processing...")
+        
+        # Convert to WAV format in memory
+        import wave
+        import tempfile
+        
+        with tempfile.NamedTemporaryFile(suffix='.wav') as tmp:
+            wf = wave.open(tmp.name, 'wb')
+            wf.setnchannels(CHANNELS)
+            wf.setsampwidth(self.p.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(b''.join(frames))
+            wf.close()
             
-        # Test STT availability
-        if status["whisper_available"]:
-            logger.info("✅ Whisper (STT) available")
-        else:
-            logger.warning("⚠️ Whisper not available")
+            # Send to backend
+            with open(tmp.name, 'rb') as f:
+                response = requests.post(
+                    f"{self.backend}/voice/process",
+                    files={'audio': ('audio.wav', f, 'audio/wav')},
+                    data={'user_id': 'quick_user'}
+                )
+        
+        if response.status_code == 200:
+            data = response.json()
             
-    except Exception as e:
-        logger.error(f"❌ Voice pipeline test failed: {e}")
-
-async def main():
-    """Run all tests"""
-    logger.info("🚀 Starting continuous voice system tests...")
+            print(f"\n📝 You: {data['transcription']}")
+            print(f"🤖 AURA: {data['response']}")
+            
+            # Play audio immediately (no file saving)
+            if data.get('audio'):
+                audio_bytes = base64.b64decode(data['audio'])
+                
+                # Stream directly to speakers
+                audio_io = io.BytesIO(audio_bytes)
+                pygame.mixer.music.load(audio_io)
+                pygame.mixer.music.play()
+                
+                # Wait for playback
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
+        else:
+            print(f"Error: {response.status_code}")
     
-    # Test voice pipeline first
-    await test_voice_pipeline()
-    
-    # Test WebSocket connection
-    await test_continuous_voice()
-    
-    logger.info("🏁 Tests completed!")
+    def run(self):
+        """Run conversation loop"""
+        print("\n" + "=" * 50)
+        print("🎤 AURA Quick Voice Chat")
+        print("=" * 50)
+        print("Press Enter to speak, 'q' to quit")
+        
+        while True:
+            cmd = input("\n⏎ Press Enter to speak: ").strip()
+            if cmd.lower() == 'q':
+                break
+            
+            self.listen_and_respond()
+        
+        self.p.terminate()
+        print("👋 Goodbye!")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    chat = QuickVoiceChat()
+    chat.run()
