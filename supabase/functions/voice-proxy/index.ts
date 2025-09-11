@@ -5,8 +5,40 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, upgrade, connection, sec-websocket-key, sec-websocket-protocol, sec-websocket-version',
 };
 
-// Configuration - Update this with your deployed backend URL
-const BACKEND_URL = Deno.env.get('BACKEND_URL') || 'ws://localhost:8000';
+// Configuration - Get backend URL from environment
+const BACKEND_URL = Deno.env.get('BACKEND_URL');
+
+if (!BACKEND_URL) {
+  console.error('❌ BACKEND_URL environment variable is not set!');
+  console.error('Please configure BACKEND_URL in Supabase Edge Functions secrets');
+}
+
+// Normalize backend URL
+const normalizeBackendUrl = (url: string): string => {
+  if (!url) return '';
+  
+  // Remove trailing slash
+  const cleanUrl = url.replace(/\/$/, '');
+  
+  // Convert HTTP schemes to WebSocket schemes
+  if (cleanUrl.startsWith('https://')) {
+    return cleanUrl.replace('https://', 'wss://');
+  } else if (cleanUrl.startsWith('http://')) {
+    return cleanUrl.replace('http://', 'ws://');
+  } else if (cleanUrl.startsWith('ws://') || cleanUrl.startsWith('wss://')) {
+    return cleanUrl;
+  }
+  
+  // Default to ws:// if no scheme provided
+  return `ws://${cleanUrl}`;
+};
+
+const normalizedBackendUrl = BACKEND_URL ? normalizeBackendUrl(BACKEND_URL) : '';
+console.log('🔧 Backend configuration:', {
+  rawBackendUrl: BACKEND_URL,
+  normalizedBackendUrl,
+  isConfigured: !!BACKEND_URL
+});
 
 serve(async (req) => {
   const { headers } = req;
@@ -14,6 +46,15 @@ serve(async (req) => {
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Check if backend is configured before proceeding
+  if (!normalizedBackendUrl) {
+    console.error('❌ Cannot process request: BACKEND_URL not configured');
+    return new Response('Backend not configured. Please set BACKEND_URL in Edge Functions secrets.', { 
+      status: 500,
+      headers: corsHeaders 
+    });
   }
 
   if (upgradeHeader.toLowerCase() !== "websocket") {
@@ -37,8 +78,8 @@ serve(async (req) => {
     // Upgrade the incoming request to WebSocket
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
 
-    // Connect to the backend WebSocket
-    const backendWsUrl = `${BACKEND_URL.replace('http://', 'ws://').replace('https://', 'wss://')}/ws/voice/continuous?token=${encodeURIComponent(token)}`;
+    // Connect to the backend WebSocket using normalized URL
+    const backendWsUrl = `${normalizedBackendUrl}/ws/voice/continuous?token=${encodeURIComponent(token)}`;
     console.log('🔗 Connecting to backend:', backendWsUrl.split('?')[0] + '?token=***');
 
     let backendSocket: WebSocket;
