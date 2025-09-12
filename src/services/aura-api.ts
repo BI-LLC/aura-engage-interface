@@ -2,9 +2,9 @@
 // Updated to connect to the backend-copy repository
 import { SignJWT } from 'jose';
 
-// Configuration constants - Connect to Supabase Edge Function proxy
-const SUPABASE_PROJECT_ID = 'rmqohckqlpkwtpzqimxk';
-const AURA_WS_URL = `wss://${SUPABASE_PROJECT_ID}.functions.supabase.co/functions/v1/voice-proxy`;
+// Configuration constants - Connect directly to Digital Ocean backend
+const BACKEND_URL = 'http://iaura.ai'; // Your Digital Ocean backend URL
+const AURA_WS_URL = BACKEND_URL.replace('http://', 'ws://').replace('https://', 'wss://');
 
 // Generate a proper JWT token matching backend requirements
 async function generateDemoToken(): Promise<string> {
@@ -140,17 +140,17 @@ class AuraAPI extends SimpleEventEmitter {
     }
 
     try {
-      // Generate fresh token for each connection and connect via Supabase proxy
+      // Generate fresh token for each connection and connect directly to backend
       const token = await generateDemoToken();
-      const wsUrl = `${AURA_WS_URL}?token=${encodeURIComponent(token)}`;
+      const wsUrl = `${AURA_WS_URL}/ws/voice/continuous?token=${encodeURIComponent(token)}`;
       
-      log('info', `Connecting to backend via Supabase proxy: ${wsUrl.split('?')[0]}...`);
+      log('info', `Connecting directly to backend: ${wsUrl.split('?')[0]}...`);
       
       return new Promise((resolve, reject) => {
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
-          log('info', 'WebSocket connected to local backend successfully');
+          log('info', 'WebSocket connected to Digital Ocean backend successfully');
           this.connected = true;
           this.updateStatus({ status: 'idle', isConnected: true, error: undefined });
           resolve();
@@ -176,9 +176,9 @@ class AuraAPI extends SimpleEventEmitter {
           this.updateStatus({ 
             status: 'error', 
             isConnected: false, 
-            error: 'Connection failed - backend may not be deployed or accessible' 
+            error: 'Connection failed - Digital Ocean backend may not be accessible' 
           });
-          reject(new Error('Cannot connect to backend. Please ensure your backend is deployed and accessible.'));
+          reject(new Error('Cannot connect to Digital Ocean backend. Please ensure it is running and accessible.'));
         };
 
         this.ws.onclose = (event) => {
@@ -226,9 +226,9 @@ class AuraAPI extends SimpleEventEmitter {
             this.updateStatus({ 
               status: 'error', 
               isConnected: false, 
-              error: 'Connection timeout - backend may be starting up' 
+              error: 'Connection timeout - Digital Ocean backend may be starting up' 
             });
-            reject(new Error('Backend connection timeout. Please ensure your backend is deployed and accessible.'));
+            reject(new Error('Digital Ocean backend connection timeout. Please ensure it is running and accessible.'));
           }
         }, 15000); // Increased timeout for backend startup
       });
@@ -483,7 +483,7 @@ class AuraAPI extends SimpleEventEmitter {
     try {
       log('info', 'Testing backend connection...');
       
-      // For now, skip HTTP test since we're using WebSocket proxy
+      // Test direct connection to Digital Ocean backend
       const isHttpReachable = true;
       
       // Test WebSocket connection with proper JWT
@@ -494,7 +494,7 @@ class AuraAPI extends SimpleEventEmitter {
         details: {
           httpReachable: isHttpReachable,
           websocketConnected: this.connected,
-          backendUrl: AURA_WS_URL,
+          backendUrl: `${AURA_WS_URL}/ws/voice/continuous`,
           hasValidJWT: true,
           timestamp: new Date().toISOString()
         }

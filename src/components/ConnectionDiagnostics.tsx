@@ -206,11 +206,11 @@ export default function ConnectionDiagnostics({ className }: ConnectionDiagnosti
               <span className="font-medium text-yellow-800">Troubleshooting Tips</span>
             </div>
             <ul className="text-sm text-yellow-700 space-y-1 ml-6 list-disc">
-              <li>Check if your backend server is running on port 8880</li>
-              <li>Verify ngrok tunnel is active and accessible</li>
-              <li>Try visiting the HTTPS URL to bypass ngrok warning page</li>
+              <li>Check if your Digital Ocean backend server is running</li>
+              <li>Verify the backend URL is accessible via HTTPS</li>
+              <li>Ensure WebSocket endpoint `/ws/voice/continuous` is available</li>
               <li>Check browser console for WebSocket error details</li>
-              <li>Ensure WebSocket path matches backend implementation</li>
+              <li>Verify SSL certificate is valid for secure WebSocket connections</li>
             </ul>
           </div>
         )}
