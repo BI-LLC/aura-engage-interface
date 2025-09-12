@@ -3,7 +3,7 @@
 import { SignJWT } from 'jose';
 
 // Configuration constants - Connect directly to Digital Ocean backend
-const BACKEND_URL = 'http://iaura.ai'; // Your Digital Ocean backend URL
+const BACKEND_URL = 'https://iaura.ai'; // Your Digital Ocean backend URL
 const AURA_WS_URL = BACKEND_URL.replace('http://', 'ws://').replace('https://', 'wss://');
 
 // Generate a proper JWT token matching backend requirements
