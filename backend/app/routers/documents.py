@@ -27,13 +27,17 @@ def get_current_user_id() -> str:
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    user_id: str = Depends(get_current_user_id)
+    user_id: Optional[str] = None
 ):
     """
     Upload a document to the knowledge base
     Supports PDF, DOCX, TXT, MD files up to 10MB
     """
     try:
+        # Use provided user_id or default
+        if not user_id:
+            user_id = "default_user"
+        
         # Validate file type
         allowed_extensions = ['pdf', 'docx', 'doc', 'txt', 'md']
         file_ext = file.filename.lower().split('.')[-1]
@@ -81,11 +85,13 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/list")
-async def list_documents(user_id: str = Depends(get_current_user_id)):
+async def list_documents(user_id: Optional[str] = None):
     """
     Get list of all documents in user's knowledge base
     """
     try:
+        if not user_id:
+            user_id = "default_user"
         documents = doc_processor.get_user_documents(user_id)
         
         return {
@@ -101,12 +107,14 @@ async def list_documents(user_id: str = Depends(get_current_user_id)):
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
-    user_id: str = Depends(get_current_user_id)
+    user_id: Optional[str] = None
 ):
     """
     Delete a document from the knowledge base
     """
     try:
+        if not user_id:
+            user_id = "default_user"
         success = doc_processor.delete_document(document_id, user_id)
         
         if not success:
@@ -130,7 +138,7 @@ async def delete_document(
 async def search_documents(
     query: str,
     top_k: int = 3,
-    user_id: str = Depends(get_current_user_id)
+    user_id: Optional[str] = None
 ):
     """
     Search documents for relevant information
@@ -140,6 +148,9 @@ async def search_documents(
         if not query or len(query.strip()) < 2:
             raise HTTPException(status_code=400, detail="Query too short")
         
+        if not user_id:
+            user_id = "default_user"
+            
         results = await doc_processor.search_documents(
             query=query,
             user_id=user_id,
@@ -160,11 +171,13 @@ async def search_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stats")
-async def get_knowledge_base_stats(user_id: str = Depends(get_current_user_id)):
+async def get_knowledge_base_stats(user_id: Optional[str] = None):
     """
     Get statistics about user's knowledge base
     """
     try:
+        if not user_id:
+            user_id = "default_user"
         documents = doc_processor.get_user_documents(user_id)
         
         total_chunks = 0

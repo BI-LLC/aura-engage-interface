@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     OPENAI_RATE_LIMIT: int = 500
     
     # Redis URL
-    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_URL: str = "redis://157.245.192.221:6379"
     
     # Future: Social Media API Keys
     # YOUTUBE_API_KEY: Optional[str] = None

@@ -4,11 +4,18 @@
 
 The AURA Voice AI WebSocket API enables real-time, bidirectional voice communication between the frontend and backend. This API handles continuous audio streaming, voice activity detection, and real-time conversation management.
 
-## **Connection Endpoint**
+## **Connection Endpoints**
 
+### **Continuous Voice (Original)**
 ```
 ws://localhost:8000/ws/voice/continuous?token=<auth_token>
 ```
+
+### **Streaming Voice (New)**
+```
+ws://localhost:8000/stream/voice
+```
+*Note: This endpoint supports both WebSocket and HTTP streaming modes*
 
 ### **Authentication**
 - **Method**: Query parameter token
@@ -39,6 +46,23 @@ websocket.send(int16Array.buffer);
 {
   "type": "ping",
   "timestamp": "2024-01-01T12:00:00Z"
+}
+```
+
+**Audio Chunk (New Streaming Endpoint):**
+```json
+{
+  "type": "audio_chunk",
+  "audio": "base64_encoded_audio_data",
+  "user_id": "user123"
+}
+```
+
+**End of Speech (New Streaming Endpoint):**
+```json
+{
+  "type": "end_of_speech",
+  "user_id": "user123"
 }
 ```
 
@@ -115,6 +139,22 @@ websocket.send(int16Array.buffer);
 {
   "type": "pong",
   "timestamp": "2024-01-01T12:00:00Z"
+}
+```
+
+#### **9. Audio Stream (New Streaming Endpoint)**
+```json
+{
+  "type": "audio_stream",
+  "chunk": "base64_encoded_audio_chunk"
+}
+```
+
+#### **10. Stream Complete (New Streaming Endpoint)**
+```json
+{
+  "type": "stream_complete",
+  "full_response": "Complete AI response text"
 }
 ```
 

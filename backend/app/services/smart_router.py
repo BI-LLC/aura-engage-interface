@@ -280,11 +280,19 @@ class SmartRouter:
         try:
             self.request_counts["openai"].append(datetime.now())
             
+            # Prepare system prompt for document-only responses
+            system_prompt = self._get_voice_system_prompt()
+            
             client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ]
             
             response = await client.chat.completions.create(
                 model="gpt-4-turbo-preview",
-                messages=[{"role": "user", "content": message}],
+                messages=messages,
                 max_tokens=1000,
                 temperature=0.3
             )
@@ -472,10 +480,11 @@ class SmartRouter:
                 "Content-Type": "application/json"
             }
             
-            # Build request data
+            # Build request data with document-only system prompt
+            system_prompt = self._get_voice_system_prompt()
             data = {
                 "messages": [
-                    {"role": "system", "content": "You are AURA, a helpful AI assistant. Respond naturally and conversationally."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": message}
                 ],
                 "model": "grok-beta",
@@ -570,19 +579,20 @@ class SmartRouter:
         return self.total_requests
     
     def _get_voice_system_prompt(self, user_context: Optional[Dict] = None) -> str:
-        """Get optimized system prompt for voice conversation"""
-        base_prompt = """You are a helpful AI assistant designed for natural voice conversation. 
+        """Get optimized system prompt for voice conversation - DOCUMENT-ONLY BY DEFAULT"""
+        base_prompt = """You are a helpful AI assistant running on the AURA platform. You ONLY use information from uploaded documents.
 
-Key guidelines:
+CRITICAL RULES:
+- ONLY answer based on information from the user's uploaded documents
+- NEVER use external knowledge, internet, or general AI knowledge
+- If the documents don't contain relevant information, clearly state this
 - Keep responses concise and conversational (1-2 sentences max)
-- Use natural speech patterns that sound good when spoken
-- Avoid complex punctuation or formatting
 - Be warm, helpful, and engaging
 - Respond as if in a phone call conversation
 
-Current context: {context}"""
+Document context: {context}"""
 
-        context = "General conversation"
+        context = "Document-based responses only"
         if user_context:
             if "persona" in user_context:
                 context += f", User preference: {user_context['persona']}"

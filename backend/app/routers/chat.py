@@ -29,9 +29,10 @@ class ChatRequest(BaseModel):
     message: str
     user_id: Optional[str] = None
     session_id: Optional[str] = None
-    use_memory: bool = True
-    use_persona: bool = True
-    search_knowledge: bool = True
+    use_memory: bool = True  # Keep memory enabled
+    use_persona: bool = True  # Keep persona enabled
+    search_knowledge: bool = True  # Only searches uploaded documents
+    allow_external_knowledge: bool = False  # NEW: Allow external knowledge (disabled by default)
 
 class ChatResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())  # Fix Pydantic warning
@@ -44,6 +45,8 @@ class ChatResponse(BaseModel):
     persona_applied: bool
     knowledge_used: bool
     sources: List[str] = []
+    external_knowledge_used: bool = False  # NEW: Whether external knowledge was used
+    document_found: bool = False  # Whether relevant documents were found
 
 def set_services(sr: SmartRouter, me: MemoryEngine):
     """Set service instances from main app"""
@@ -63,30 +66,47 @@ async def chat(
         
         # Generate session ID if not provided
         session_id = request.session_id or str(uuid.uuid4())
-        user_id = request.user_id or "anonymous"
+        user_id = request.user_id or "default_user"  # Changed from "anonymous" to "default_user"
         
         # Step 1: Search knowledge base if enabled
         knowledge_context = ""
         sources = []
+        document_found = False
         
-        if request.search_knowledge and user_id != "anonymous":
+        if request.search_knowledge and user_id:
             search_results = await data_service.search_documents(
                 request.message,
                 user_id,
-                limit=3
+                limit=5  # Increased for document-only mode
             )
             
             if search_results:
+                document_found = True
                 knowledge_context = "\n\nRelevant information from your documents:\n"
                 for result in search_results:
                     sources.append(result["filename"])
-                    for chunk in result["relevant_chunks"][:2]:
-                        knowledge_context += f"- {chunk['chunk'][:200]}...\n"
+                    for chunk in result["relevant_chunks"][:3]:  # More chunks for document-only
+                        knowledge_context += f"- {chunk['chunk'][:300]}...\n"
+        
+        # DOCUMENT-ONLY DEFAULT: If no external knowledge allowed and no documents found, return early
+        if not request.allow_external_knowledge and not document_found:
+            return ChatResponse(
+                response="I don't have any relevant information in your uploaded documents to answer this question. Please upload relevant documents first, or ask about topics covered in your existing documents.",
+                session_id=session_id,
+                model_used="document-only",
+                response_time=0.0,
+                cost=0.0,
+                persona_applied=False,
+                knowledge_used=False,
+                sources=[],
+                external_knowledge_used=False,
+                document_found=False
+            )
         
         # Step 2: Get memory context if enabled
         memory_context = ""
         
-        if request.use_memory and user_id != "anonymous" and memory_engine:
+        if request.use_memory and user_id and memory_engine:
             try:
                 # Get user preferences
                 preferences = await memory_engine.get_user_preferences(user_id)
@@ -115,7 +135,7 @@ async def chat(
         enhanced_message = request.message
         persona_applied = False
         
-        if request.use_persona and user_id != "anonymous":
+        if request.use_persona and user_id:
             try:
                 enhanced_message = await persona_manager.apply_persona_to_message(
                     request.message,
@@ -131,17 +151,18 @@ async def chat(
         if knowledge_context:
             full_message += knowledge_context
         
-        if memory_context:
+        if memory_context and request.use_memory:
             full_message += memory_context
         
-        # Step 5: Route to LLM
-        llm_response = await smart_router.route_message(full_message)
+        # Step 5: Route to LLM (document-only by default)
+        document_only = not request.allow_external_knowledge
+        llm_response = await smart_router.route_message(full_message, document_only=document_only)
         
         if llm_response.error:
             raise HTTPException(status_code=503, detail=f"LLM Error: {llm_response.error}")
         
         # Step 6: Store conversation in background
-        if user_id != "anonymous" and memory_engine:
+        if user_id and memory_engine:
             background_tasks.add_task(
                 store_conversation,
                 session_id,
@@ -152,7 +173,7 @@ async def chat(
             )
         
         # Step 7: Update persona based on interaction
-        if request.use_persona and user_id != "anonymous":
+        if request.use_persona and user_id:
             background_tasks.add_task(
                 update_persona_feedback,
                 user_id,
@@ -168,7 +189,9 @@ async def chat(
             cost=llm_response.cost,
             persona_applied=persona_applied,
             knowledge_used=bool(knowledge_context),
-            sources=sources
+            sources=sources,
+            external_knowledge_used=request.allow_external_knowledge,
+            document_found=document_found
         )
         
     except HTTPException:

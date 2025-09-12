@@ -18,6 +18,22 @@ curl http://localhost:8080/health
 pip install -r requirements.txt
 ```
 
+### Voice Testing
+```bash
+# Test enhanced voice.py (text-to-voice)
+cd test
+python voice.py
+
+# Test realtime streaming
+python test_realtime.py
+
+# Test B-I-C hardcoded chatbot
+python BIC.py
+
+# Test continuous voice
+python test_continuous_voice.py
+```
+
 ### Frontend
 ```bash
 # Open main page
@@ -119,6 +135,9 @@ curl -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models
 | API Utilities | Shared functions | `frontend/shared/api.js` |
 | Test Server | Development server | `backend/simple_test.py` |
 | Main Backend | Production server | `backend/app/main.py` |
+| Enhanced Voice Client | Text-to-voice chat | `test/voice.py` |
+| Realtime Streaming | WebSocket voice streaming | `test/test_realtime.py` |
+| B-I-C Chatbot | Hardcoded chatbot with voice | `test/BIC.py` |
 
 ## 🌐 URLs
 

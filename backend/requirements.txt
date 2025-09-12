@@ -1,5 +1,9 @@
 # Python dependencies for AURA Voice AI
 
+# Core audio requirements
+pyaudio==0.2.11
+pygame==2.5.2  # For better audio playback
+
 # Web framework
 fastapi==0.115.0
 uvicorn[standard]==0.30.0

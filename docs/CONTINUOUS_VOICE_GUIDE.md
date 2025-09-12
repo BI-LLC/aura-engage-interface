@@ -1,6 +1,6 @@
 # 🎤 AURA Continuous Voice AI - Implementation Guide
 
-## 🚀 **What Was Fixed**
+## 🚀 **What Was Fixed & Enhanced**
 
 ### **Critical Issues Resolved:**
 
@@ -9,6 +9,14 @@
 3. **WebSocket Protocol**: Aligned frontend and backend message handling
 4. **Audio Format Handling**: Added proper raw PCM to WAV conversion for Whisper
 5. **Binary Data Support**: Fixed WebSocket to handle both JSON and binary audio data
+
+### **New Realtime Features Added:**
+
+6. **Enhanced voice.py**: Fixed endpoint URLs, added comprehensive error handling
+7. **WebSocket Streaming**: New `/stream/voice` endpoint for continuous voice conversation
+8. **Microphone Recording**: Implemented silence detection and automatic recording
+9. **Hardcoded Chatbot**: Created BIC.py with voice input support and strict limitations
+10. **Clean Design**: Removed emojis, improved formatting, added separate text/voice modes
 
 ### **Architecture Improvements:**
 
@@ -57,6 +65,16 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```bash
 cd aura-voice-ai/backend
 python test_continuous_voice.py
+
+# Test the enhanced voice.py
+cd ../test
+python voice.py
+
+# Test realtime streaming
+python test_realtime.py
+
+# Test hardcoded B-I-C chatbot
+python BIC.py
 ```
 
 ## 🎯 **How It Works Now**
@@ -198,6 +216,9 @@ When the system is working correctly, you should see:
 - **Pipeline**: `backend/app/services/voice_pipeline.py`
 - **Frontend**: `frontend/widget/widget.js`
 - **Test**: `backend/test_continuous_voice.py`
+- **Enhanced Voice Client**: `test/voice.py` (text-to-voice chat)
+- **Realtime Streaming**: `test/test_realtime.py` (WebSocket voice streaming)
+- **Hardcoded Chatbot**: `test/BIC.py` (B-I-C chatbot with voice support)
 
 ---
 

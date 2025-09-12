@@ -2,7 +2,82 @@
 
 ## 🚨 Critical Issues & Solutions
 
-### 1. WebSocket Connection Failures
+### 1. voice.py and BIC.py Issues
+
+#### Error: `ModuleNotFoundError: No module named 'app'`
+
+**Symptoms:**
+- Test scripts fail to import backend modules
+- Python path issues when running from test directory
+- Import errors for app services
+
+**Root Causes:**
+1. **Incorrect working directory**
+2. **Python path not set properly**
+3. **Missing sys.path configuration**
+
+**Solutions:**
+```python
+# Fixed in test scripts - added to beginning of files
+import sys
+import os
+
+# Add backend directory to Python path
+backend_path = os.path.join(os.path.dirname(__file__), '..', 'backend')
+sys.path.insert(0, backend_path)
+```
+
+#### Error: `HTTP 503 Service Unavailable`
+
+**Symptoms:**
+- Backend returns 503 errors
+- voice.py shows "Service Unavailable"
+- API calls fail
+
+**Root Causes:**
+1. **Invalid OpenAI API key**
+2. **Invalid Grok API key**
+3. **API rate limits exceeded**
+
+**Solutions:**
+```bash
+# Check API keys in .env file
+cat backend/.env
+
+# Test API connectivity
+cd test
+python test_api_keys.py
+
+# Update API keys if needed
+# Get new keys from OpenAI and Grok dashboards
+```
+
+#### Error: `Endpoint not found` or `404 Not Found`
+
+**Symptoms:**
+- voice.py fails to connect to `/chat` endpoint
+- HTTP 404 errors
+
+**Root Causes:**
+1. **Missing trailing slash in endpoint URL**
+2. **Incorrect endpoint path**
+
+**Solutions:**
+```python
+# Fixed in voice.py - use correct endpoint
+response = requests.post(
+    f"{self.backend_url}/chat/",  # Note the trailing slash
+    json={
+        "message": message,
+        "user_id": self.user_id,
+        "session_id": self.session_id,
+        "use_memory": True
+    },
+    timeout=30
+)
+```
+
+### 2. WebSocket Connection Failures
 
 #### Error: `WebSocket connection to 'ws://localhost:8080/ws/voice/continuous' failed`
 

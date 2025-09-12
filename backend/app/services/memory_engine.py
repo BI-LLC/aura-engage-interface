@@ -59,7 +59,7 @@ class MemoryEngine:
         try:
             # Try to connect to Redis; host and port are currently static
             self.redis_client = redis.Redis(
-                host='localhost',
+                host='157.245.192.221',
                 port=6379,
                 db=0,
                 decode_responses=True

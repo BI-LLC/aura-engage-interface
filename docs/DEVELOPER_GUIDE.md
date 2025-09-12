@@ -68,7 +68,10 @@ aura-voice-ai/
 │   ├── test_complete_pipeline.py # Full pipeline testing
 │   ├── test_continuous_voice.py # Voice conversation testing
 │   ├── test_streaming.py       # Streaming functionality testing
-│   └── test_voice_pipeline.py  # Voice pipeline testing
+│   ├── test_voice_pipeline.py  # Voice pipeline testing
+│   ├── test_realtime.py        # Real-time voice streaming client
+│   ├── voice.py                # Text-to-voice chat client
+│   └── BIC.py                  # Hardcoded B-I-C chatbot with voice support
 ├── docs/                       # Documentation
 └── README.md                   # This file
 ```
@@ -100,7 +103,35 @@ cd aura-voice-ai/frontend
 # Navigate to: http://localhost:8080
 ```
 
-## 🎤 Voice Widget Implementation
+## 🎤 Voice System Evolution: From voice.py to Realtime
+
+### **voice.py - The Foundation**
+The original `voice.py` script provided a simple text-to-voice chat interface:
+- **Text Input**: Users type messages
+- **LLM Processing**: Backend processes with OpenAI/Grok
+- **Voice Output**: ElevenLabs TTS generates speech
+- **HTTP-based**: Simple request/response pattern
+
+### **Realtime Enhancement Journey**
+We evolved voice.py into a comprehensive realtime voice system:
+
+#### **Phase 1: Enhanced voice.py**
+- ✅ **Fixed endpoint URLs** (`/chat/` with trailing slash)
+- ✅ **Added comprehensive error handling** for network, HTTP, and JSON issues
+- ✅ **Improved debugging** with detailed response logging
+- ✅ **Enhanced TTS integration** with immediate audio playback
+
+#### **Phase 2: WebSocket Streaming**
+- ✅ **Added `/stream/voice` endpoint** for real-time voice streaming
+- ✅ **Implemented continuous audio processing** with silence detection
+- ✅ **Created test_realtime.py** for WebSocket-based voice conversation
+- ✅ **Added microphone recording** with automatic silence detection
+
+#### **Phase 3: Hardcoded Chatbot**
+- ✅ **Created BIC.py** with hardcoded B-I-C knowledge base
+- ✅ **Implemented strict limitations** to reject off-topic queries
+- ✅ **Added voice input support** with separate text/voice modes
+- ✅ **Enhanced user experience** with clean design and proper formatting
 
 ### Audio Capture Flow
 
@@ -509,6 +540,9 @@ python test_complete_pipeline.py   # Test full voice pipeline
 python test_continuous_voice.py    # Test real-time voice conversation
 python test_streaming.py           # Test streaming functionality
 python test_voice_pipeline.py      # Test voice pipeline components
+python test_realtime.py            # Real-time voice streaming client
+python voice.py                    # Text-to-voice chat client
+python BIC.py                      # Hardcoded B-I-C chatbot with voice support
 ```
 
 ### Frontend Testing

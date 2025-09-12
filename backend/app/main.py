@@ -150,11 +150,11 @@ app = FastAPI(
 # Add tenant isolation middleware
 # app.add_middleware(TenantMiddleware, auth_service=auth_service)
 
-# CORS for subdomains
+# CORS for subdomains and production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://*.aura-voice-ai.com", 
+        "https://*.iaura.com", 
         "http://localhost:3000", 
         "http://127.0.0.1:3000",
         "http://localhost:5173",  # Vite default port
@@ -162,8 +162,12 @@ app.add_middleware(
         "http://localhost:4173",  # Vite preview port
         "http://127.0.0.1:4173",  # Vite preview port
         "http://localhost:8080",  # Frontend port
-        "http://127.0.0.1:8080"   # Frontend port
-    ],  # Allow subdomains and local dev
+        "http://127.0.0.1:8080",  # Frontend port
+        "http://157.245.192.221:3000",  # DigitalOcean frontend
+        "http://157.245.192.221:8000",  # DigitalOcean API
+        "http://157.245.192.221:8765",  # DigitalOcean WebSocket
+        "*"  # Allow all origins for development (remove in production)
+    ],  # Allow subdomains, local dev, and DigitalOcean
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -688,7 +692,14 @@ async def test_interface():
                 <div style="margin: 20px 0;">
                     <h4>Ask AURA about your documents:</h4>
                     <textarea id="document-question" placeholder="Ask AURA to search through your uploaded documents..." rows="3">What are the main topics covered in my documents?</textarea>
-                    <button onclick="askAboutDocuments()" class="btn-success">Ask AURA</button>
+                    <div style="margin: 10px 0;">
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="allow-external-knowledge" style="transform: scale(1.2);">
+                            <span><strong>Allow External Knowledge:</strong> Enable internet/external knowledge (disabled by default)</span>
+                        </label>
+                    </div>
+                    <button onclick="askAboutDocuments()" class="btn-success">Ask AURA (Document-Only)</button>
+                    <button onclick="askAboutDocuments(false, true)" class="btn-warning">Ask AURA (With External Knowledge)</button>
                 </div>
                 
                 <div id="document-result" class="result"></div>
@@ -860,9 +871,15 @@ async def test_interface():
                 }
             }
             
-            async function askAboutDocuments() {
+            async function askAboutDocuments(allowExternal = false, forceExternal = false) {
                 const question = document.getElementById('document-question').value;
                 const resultDiv = document.getElementById('document-result');
+                const checkbox = document.getElementById('allow-external-knowledge');
+                
+                // Use checkbox state if not explicitly passed
+                if (!forceExternal) {
+                    allowExternal = checkbox.checked;
+                }
                 
                 if (!question.trim()) {
                     resultDiv.textContent = 'Please enter a question about your documents.';
@@ -874,7 +891,8 @@ async def test_interface():
                     return;
                 }
                 
-                resultDiv.textContent = 'Asking AURA about your documents...';
+                const modeText = allowExternal ? ' (With External Knowledge)' : ' (Document-Only Mode)';
+                resultDiv.textContent = 'Asking AURA about your documents' + modeText + '...';
                 
                 try {
                     const response = await fetch('/chat/', {
@@ -884,13 +902,33 @@ async def test_interface():
                             message: question,
                             user_id: 'test_user',
                             use_memory: true,
-                            search_knowledge: true
+                            use_persona: true,
+                            search_knowledge: true,
+                            allow_external_knowledge: allowExternal
                         })
                     });
                     
                     const data = await response.json();
-                    resultDiv.textContent = 'Question: "' + question + '"\\n\\nAURA\'s Answer: "' + data.response + '"\\n\\nModel Used: ' + data.model_used + '\\nCost: $' + (data.cost || 0).toFixed(4);
-                    resultDiv.className = 'result status-ok';
+                    let responseText = 'Question: "' + question + '"\\n\\n';
+                    responseText += 'AURA\'s Answer: "' + data.response + '"\\n\\n';
+                    responseText += 'Model Used: ' + data.model_used + '\\n';
+                    responseText += 'Cost: $' + (data.cost || 0).toFixed(4) + '\\n';
+                    
+                    responseText += 'External Knowledge Used: ' + (data.external_knowledge_used ? 'Yes' : 'No') + '\\n';
+                    responseText += 'Document Found: ' + (data.document_found ? 'Yes' : 'No') + '\\n';
+                    
+                    if (data.sources && data.sources.length > 0) {
+                        responseText += 'Sources: ' + data.sources.join(', ') + '\\n';
+                    }
+                    
+                    resultDiv.textContent = responseText;
+                    
+                    // Color code based on mode and success
+                    if (!data.external_knowledge_used) {
+                        resultDiv.className = data.document_found ? 'result status-ok' : 'result status-warning';
+                    } else {
+                        resultDiv.className = 'result status-ok';
+                    }
                     
                 } catch (error) {
                     resultDiv.textContent = 'Error asking about documents: ' + error.message;

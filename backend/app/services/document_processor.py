@@ -518,29 +518,44 @@ class DocumentProcessor:
             logger.error(f"Error deleting document: {e}")
             return False
     
-    def get_context_for_chat(self, query: str, user_id: str) -> str:
+    def get_context_for_chat(self, query: str, user_id: str, document_only_mode: bool = False) -> str:
         """
         Get relevant context from documents for chat
         Returns formatted context string to inject into LLM prompt
         """
         try:
-            # Search documents
-            results = asyncio.run(self.search_documents(query, user_id, top_k=2))
+            # Search documents with higher limit for document-only mode
+            top_k = 5 if document_only_mode else 2
+            results = asyncio.run(self.search_documents(query, user_id, top_k=top_k))
             
             if not results:
                 return ""
             
-            # Format context
+            # Format context with enhanced information for document-only mode
             context_parts = []
             for i, result in enumerate(results, 1):
-                context_parts.append(
-                    f"[Document: {result['document']}]\n{result['content'][:500]}"
-                )
+                if document_only_mode:
+                    context_parts.append(
+                        f"[Document {i}: {result['document']}]\n{result['content'][:800]}"
+                    )
+                else:
+                    context_parts.append(
+                        f"[Document: {result['document']}]\n{result['content'][:500]}"
+                    )
             
             context = "\n\n".join(context_parts)
             
-            # Create context prompt
-            return f"""Based on your uploaded documents, here's relevant information:
+            # Create context prompt based on mode
+            if document_only_mode:
+                return f"""You are in DOCUMENT-ONLY MODE. You must ONLY use information from the user's uploaded documents below to answer their question. Do not use any external knowledge.
+
+Available document information:
+
+{context}
+
+IMPORTANT: Only answer based on the information provided above. If the documents don't contain enough information to answer the question, say so clearly."""
+            else:
+                return f"""Based on your uploaded documents, here's relevant information:
 
 {context}
 

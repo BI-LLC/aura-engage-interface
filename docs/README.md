@@ -65,6 +65,11 @@ This documentation is actively maintained and updated with each release. Last up
 - ✅ Updated project structure to reflect current system
 - ✅ Added comprehensive documentation index
 - ✅ Updated architecture documentation to match current implementation
+- ✅ **NEW**: Enhanced voice.py with realtime streaming capabilities
+- ✅ **NEW**: Added WebSocket streaming endpoint `/stream/voice` for continuous voice conversation
+- ✅ **NEW**: Implemented microphone recording with silence detection in test scripts
+- ✅ **NEW**: Created BIC.py hardcoded chatbot with voice input support
+- ✅ **NEW**: Added comprehensive error handling and debugging for voice pipeline
 
 ## 🤝 Contributing to Documentation
 
