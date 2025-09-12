@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   TestTube2, 
   RefreshCw, 
@@ -10,10 +12,13 @@ import {
   XCircle, 
   AlertTriangle,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Settings,
+  Globe
 } from 'lucide-react';
 import { auraAPI } from '@/services/aura-api';
 import { useToast } from '@/hooks/use-toast';
+import { getAuraConfig, setBackendUrl } from '@/config/aura';
 
 interface ConnectionDiagnosticsProps {
   className?: string;
@@ -22,9 +27,23 @@ interface ConnectionDiagnosticsProps {
 export default function ConnectionDiagnostics({ className }: ConnectionDiagnosticsProps) {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [testResults, setTestResults] = useState<any>(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [newBackendUrl, setNewBackendUrl] = useState('');
+  const [config, setConfig] = useState(getAuraConfig());
   const { toast } = useToast();
 
   const diagnostics = auraAPI.getDiagnostics();
+
+  // Update config when it changes
+  useEffect(() => {
+    const updateConfig = () => setConfig(getAuraConfig());
+    window.addEventListener('aura-config-changed', updateConfig);
+    return () => window.removeEventListener('aura-config-changed', updateConfig);
+  }, []);
+
+  useEffect(() => {
+    setNewBackendUrl(config.backendUrl);
+  }, [config.backendUrl]);
 
   const runConnectionTest = async () => {
     setIsTestingConnection(true);
@@ -58,12 +77,30 @@ export default function ConnectionDiagnostics({ className }: ConnectionDiagnosti
   };
 
   const copyDiagnostics = () => {
-    const diagnosticsText = JSON.stringify({ diagnostics, testResults }, null, 2);
+    const diagnosticsText = JSON.stringify({ diagnostics, testResults, config }, null, 2);
     navigator.clipboard.writeText(diagnosticsText);
     toast({
       title: "Diagnostics Copied",
       description: "Diagnostic information copied to clipboard",
     });
+  };
+
+  const updateBackendUrl = () => {
+    try {
+      new URL(newBackendUrl); // Validate URL
+      setBackendUrl(newBackendUrl);
+      setShowConfig(false);
+      toast({
+        title: "Backend URL Updated",
+        description: "Backend configuration has been updated",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Invalid URL",
+        description: "Please enter a valid URL (e.g., https://example.com)",
+      });
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -84,25 +121,62 @@ export default function ConnectionDiagnostics({ className }: ConnectionDiagnosti
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Backend URL */}
+        {/* Backend Configuration */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Backend URL</span>
-            {diagnostics.isNgrok && (
-              <Badge variant="secondary">ngrok tunnel</Badge>
-            )}
+            <span className="text-sm font-medium">Backend Configuration</span>
+            <div className="flex items-center gap-2">
+              {config.isNgrok && (
+                <Badge variant="secondary">ngrok tunnel</Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowConfig(!showConfig)}
+              >
+                <Settings className="w-3 h-3" />
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          
+          {showConfig && (
+            <div className="space-y-2 p-3 border rounded-lg bg-muted/20">
+              <Label htmlFor="backend-url" className="text-xs">Backend URL</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="backend-url"
+                  value={newBackendUrl}
+                  onChange={(e) => setNewBackendUrl(e.target.value)}
+                  placeholder="https://your-backend.com"
+                  className="text-xs"
+                />
+                <Button size="sm" onClick={updateBackendUrl}>
+                  Update
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                You can also use URL parameter: ?backend=https://your-backend.com
+              </p>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2 mt-2">
             <code className="flex-1 px-2 py-1 bg-muted rounded text-xs break-all">
-              {diagnostics.backendUrl}
+              {config.backendUrl}
             </code>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => window.open(diagnostics.backendUrl.replace('wss://', 'https://'), '_blank')}
+              onClick={() => window.open(config.backendUrl, '_blank')}
             >
               <ExternalLink className="w-3 h-3" />
             </Button>
+          </div>
+          
+          <div className="mt-1">
+            <code className="px-2 py-1 bg-muted rounded text-xs break-all text-muted-foreground">
+              WebSocket: {config.wsUrl}/ws/voice/continuous
+            </code>
           </div>
         </div>
 
@@ -206,11 +280,13 @@ export default function ConnectionDiagnostics({ className }: ConnectionDiagnosti
               <span className="font-medium text-yellow-800">Troubleshooting Tips</span>
             </div>
             <ul className="text-sm text-yellow-700 space-y-1 ml-6 list-disc">
-              <li>Check if your Digital Ocean backend server is running</li>
-              <li>Verify the backend URL is accessible via HTTPS</li>
+              <li>Check if your backend server is running and accessible</li>
+              <li>Verify the backend URL is accessible via HTTPS (test with the link above)</li>
               <li>Ensure WebSocket endpoint `/ws/voice/continuous` is available</li>
               <li>Check browser console for WebSocket error details</li>
               <li>Verify SSL certificate is valid for secure WebSocket connections</li>
+              <li>If using ngrok, ensure the tunnel is active and not expired</li>
+              <li>Try configuring a different backend URL using the settings above</li>
             </ul>
           </div>
         )}

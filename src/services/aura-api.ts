@@ -1,31 +1,5 @@
-// Aura API Service - Real-time voice communication with local backend
-// Updated to connect to the backend-copy repository
-import { SignJWT } from 'jose';
-
-// Configuration constants - Connect directly to Digital Ocean backend
-const BACKEND_URL = 'https://iaura.ai'; // Your Digital Ocean backend URL
-const AURA_WS_URL = BACKEND_URL.replace('http://', 'ws://').replace('https://', 'wss://');
-
-// Generate a proper JWT token matching backend requirements
-async function generateDemoToken(): Promise<string> {
-  const payload = {
-    user_id: 'demo_user_123',
-    tenant_id: 'demo_tenant_123',
-    role: 'user',
-    organization: 'Demo Organization',
-    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days from now
-  };
-  
-  // Use the same secret key as the backend
-  const secret = new TextEncoder().encode('your-secret-key-change-in-production');
-  
-  const token = await new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('7d')
-    .sign(secret);
-    
-  return token;
-}
+// Aura API Service - Real-time voice communication with configurable backend
+import { getAuraConfig, generateDemoToken, testHttpsReachability } from '@/config/aura';
 
 // Type definitions
 export interface AuraMessage {
@@ -95,6 +69,8 @@ class AuraAPI extends SimpleEventEmitter {
   private status: AuraStatus = { status: 'idle', isConnected: false };
   private audioContext: AudioContext | null = null;
   private audioStream: MediaStream | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
 
   // Event handlers
   onResponse?: (text: string) => void;
@@ -140,18 +116,25 @@ class AuraAPI extends SimpleEventEmitter {
     }
 
     try {
-      // Generate fresh token for each connection and connect directly to backend
-      const token = await generateDemoToken();
-      const wsUrl = `${AURA_WS_URL}/ws/voice/continuous?token=${encodeURIComponent(token)}`;
+      // Get current configuration
+      const config = getAuraConfig();
       
-      log('info', `Connecting directly to backend: ${wsUrl.split('?')[0]}...`);
+      // Generate demo token (should be replaced with proper backend auth)
+      const token = await generateDemoToken();
+      const wsUrl = `${config.wsUrl}/ws/voice/continuous?token=${encodeURIComponent(token)}`;
+      
+      log('info', `Connecting to backend: ${wsUrl.split('?')[0]}...`, { 
+        backendUrl: config.backendUrl,
+        isNgrok: config.isNgrok 
+      });
       
       return new Promise((resolve, reject) => {
         this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
-          log('info', 'WebSocket connected to Digital Ocean backend successfully');
+          log('info', 'WebSocket connected successfully');
           this.connected = true;
+          this.reconnectAttempts = 0; // Reset reconnect counter on successful connection
           this.updateStatus({ status: 'idle', isConnected: true, error: undefined });
           resolve();
         };
@@ -176,9 +159,9 @@ class AuraAPI extends SimpleEventEmitter {
           this.updateStatus({ 
             status: 'error', 
             isConnected: false, 
-            error: 'Connection failed - Digital Ocean backend may not be accessible' 
+            error: 'Connection failed - backend may not be accessible' 
           });
-          reject(new Error('Cannot connect to Digital Ocean backend. Please ensure it is running and accessible.'));
+          reject(new Error('Cannot connect to backend. Please ensure it is running and accessible.'));
         };
 
         this.ws.onclose = (event) => {
@@ -205,16 +188,25 @@ class AuraAPI extends SimpleEventEmitter {
             error: errorMessage 
           });
           
-          // Auto-reconnect after a delay if not an auth error
-          if (!event.wasClean && this.shouldReconnect && event.code !== 1008 && event.code !== 4001) {
-            log('info', 'Attempting to reconnect in 3 seconds...');
+          // Auto-reconnect with exponential backoff if not an auth error
+          if (!event.wasClean && this.shouldReconnect && event.code !== 1008 && event.code !== 4001 && this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000); // Exponential backoff, max 30 seconds
+            log('info', `Attempting to reconnect in ${delay}ms... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
             setTimeout(() => {
               if (this.shouldReconnect) {
                 this.connectWebSocket().catch(err => 
                   log('error', 'Reconnection failed', err)
                 );
               }
-            }, 3000);
+            }, delay);
+          } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            log('error', 'Max reconnection attempts reached');
+            this.updateStatus({ 
+              status: 'error', 
+              isConnected: false, 
+              error: 'Max reconnection attempts reached' 
+            });
           }
         };
         
@@ -226,11 +218,11 @@ class AuraAPI extends SimpleEventEmitter {
             this.updateStatus({ 
               status: 'error', 
               isConnected: false, 
-              error: 'Connection timeout - Digital Ocean backend may be starting up' 
+              error: 'Connection timeout - backend may be starting up' 
             });
-            reject(new Error('Digital Ocean backend connection timeout. Please ensure it is running and accessible.'));
+            reject(new Error('Backend connection timeout. Please ensure it is running and accessible.'));
           }
-        }, 15000); // Increased timeout for backend startup
+        }, 15000); // 15 second timeout
       });
       
     } catch (error) {
@@ -483,24 +475,54 @@ class AuraAPI extends SimpleEventEmitter {
     try {
       log('info', 'Testing backend connection...');
       
-      // Test direct connection to Digital Ocean backend
-      const isHttpReachable = true;
+      const config = getAuraConfig();
       
-      // Test WebSocket connection with proper JWT
-      await this.connectWebSocket();
+      // Test HTTPS reachability first
+      const httpsTest = await testHttpsReachability(config.backendUrl);
+      log('info', 'HTTPS reachability test', httpsTest);
+      
+      // Test WebSocket connection (skip auth for network test)
+      let wsTest = { success: false, error: 'Not tested' };
+      try {
+        // Try a basic WebSocket connection without token to test network connectivity
+        const testWsUrl = `${config.wsUrl}/ws/voice/continuous`;
+        const testWs = new WebSocket(testWsUrl);
+        
+        wsTest = await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            testWs.close();
+            resolve({ success: false, error: 'WebSocket connection timeout' });
+          }, 5000);
+          
+          testWs.onopen = () => {
+            clearTimeout(timeout);
+            testWs.close();
+            resolve({ success: true, error: undefined });
+          };
+          
+          testWs.onerror = () => {
+            clearTimeout(timeout);
+            resolve({ success: false, error: 'WebSocket connection failed' });
+          };
+        });
+      } catch (error) {
+        wsTest = { success: false, error: error.message };
+      }
       
       const testResult = {
-        success: true,
+        success: httpsTest.success && wsTest.success,
+        error: !httpsTest.success ? `HTTPS: ${httpsTest.error}` : !wsTest.success ? `WebSocket: ${wsTest.error}` : undefined,
         details: {
-          httpReachable: isHttpReachable,
-          websocketConnected: this.connected,
-          backendUrl: `${AURA_WS_URL}/ws/voice/continuous`,
-          hasValidJWT: true,
+          httpsTest,
+          wsTest,
+          backendUrl: config.backendUrl,
+          wsUrl: `${config.wsUrl}/ws/voice/continuous`,
+          isNgrok: config.isNgrok,
           timestamp: new Date().toISOString()
         }
       };
       
-      log('info', 'Backend connection test completed successfully', testResult);
+      log('info', 'Backend connection test completed', testResult);
       return testResult;
       
     } catch (error: any) {
@@ -508,12 +530,8 @@ class AuraAPI extends SimpleEventEmitter {
         success: false,
         error: error.message || 'Unknown error',
         details: {
-          httpReachable: false,
-          websocketConnected: false,
-          backendUrl: AURA_WS_URL,
-          hasValidJWT: false,
-          timestamp: new Date().toISOString(),
-          errorDetails: error.message
+          errorDetails: error.message,
+          timestamp: new Date().toISOString()
         }
       };
       
@@ -523,23 +541,24 @@ class AuraAPI extends SimpleEventEmitter {
   }
 
   getDiagnostics(): any {
+    const config = getAuraConfig();
+    const wsStateMap = {
+      0: 'CONNECTING',
+      1: 'OPEN', 
+      2: 'CLOSING',
+      3: 'CLOSED'
+    };
+    
     const diagnostics = {
-      connection: {
-        connected: this.connected,
-        websocketState: this.ws?.readyState,
-        url: AURA_WS_URL,
-        backendUrl: AURA_WS_URL,
-        shouldReconnect: this.shouldReconnect,
-        hasJWTToken: true
-      },
-      audio: {
-        contextState: this.audioContext?.state,
-        deviceSupport: !!navigator.mediaDevices?.getUserMedia
-      },
-      browser: {
-        userAgent: navigator.userAgent,
-        webSocketSupport: !!window.WebSocket
-      },
+      backendUrl: config.backendUrl,
+      wsUrl: config.wsUrl,
+      isNgrok: config.isNgrok,
+      wsState: this.ws?.readyState,
+      wsStateText: this.ws ? wsStateMap[this.ws.readyState] : 'NOT_CREATED',
+      audioContext: this.audioContext?.state || 'not_initialized',
+      status: this.status,
+      reconnectAttempts: this.reconnectAttempts,
+      maxReconnectAttempts: this.maxReconnectAttempts,
       logs: window.auraLogs?.slice(-10) || [],
       timestamp: new Date().toISOString()
     };

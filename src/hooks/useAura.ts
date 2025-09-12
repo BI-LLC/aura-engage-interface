@@ -79,6 +79,8 @@ export const useAura = () => {
   const reconnect = useCallback(async () => {
     try {
       console.log('🔄 Attempting to reconnect...');
+      // Disconnect first to reset connection state
+      auraAPI.disconnect();
       await auraAPI.connect();
     } catch (error) {
       console.error('Failed to reconnect:', error);
