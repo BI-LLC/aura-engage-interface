@@ -58,22 +58,35 @@ export function getAuraConfig(): AuraConfig {
 }
 
 /**
- * Generate a demo JWT token for testing
- * Note: This is insecure for production - tokens should be issued by the backend
+ * Exchange Supabase token for backend JWT token
+ * Sends the user's Supabase JWT to backend for validation and gets proper backend token
  */
-export async function generateDemoToken(): Promise<string> {
-  // For now, return a simple demo token without client-side signing
-  // This should be replaced with proper backend authentication
-  const payload = {
-    user_id: 'demo_user_123',
-    tenant_id: 'demo_tenant_123',
-    role: 'user',
-    organization: 'Demo Organization',
-    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days from now
-  };
+export async function exchangeSupabaseToken(supabaseToken: string): Promise<string> {
+  const config = getAuraConfig();
   
-  // Return base64 encoded payload for testing (NOT secure for production)
-  return btoa(JSON.stringify(payload));
+  try {
+    const response = await fetch(`${config.backendUrl}/api/auth/exchange-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseToken}`
+      },
+      body: JSON.stringify({
+        supabase_token: supabaseToken
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Token exchange failed: ${response.status} ${errorData}`);
+    }
+
+    const data = await response.json();
+    return data.backend_token || data.token;
+  } catch (error) {
+    console.error('Token exchange failed:', error);
+    throw new Error(`Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**

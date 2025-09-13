@@ -1,5 +1,6 @@
 // Aura API Service - Real-time voice communication with configurable backend
-import { getAuraConfig, generateDemoToken, testHttpsReachability } from '@/config/aura';
+import { getAuraConfig, exchangeSupabaseToken, testHttpsReachability } from '@/config/aura';
+import { supabase } from '@/integrations/supabase/client';
 
 // Type definitions
 export interface AuraMessage {
@@ -119,9 +120,15 @@ class AuraAPI extends SimpleEventEmitter {
       // Get current configuration
       const config = getAuraConfig();
       
-      // Generate demo token (should be replaced with proper backend auth)
-      const token = await generateDemoToken();
-      const wsUrl = `${config.wsUrl}/ws/voice/continuous?token=${encodeURIComponent(token)}`;
+      // Get authenticated user's session token
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error || !session?.access_token) {
+        throw new Error('User not authenticated. Please log in first.');
+      }
+      
+      // Exchange Supabase token for backend JWT token
+      const backendToken = await exchangeSupabaseToken(session.access_token);
+      const wsUrl = `${config.wsUrl}/ws/voice/continuous?token=${encodeURIComponent(backendToken)}`;
       
       log('info', `Connecting to backend: ${wsUrl.split('?')[0]}...`, { 
         backendUrl: config.backendUrl,
@@ -156,12 +163,19 @@ class AuraAPI extends SimpleEventEmitter {
         this.ws.onerror = (error) => {
           log('error', 'WebSocket error occurred', error);
           this.connected = false;
+          
+          // Enhanced error handling for authentication vs connectivity
+          let errorMessage = 'Connection failed - backend may not be accessible';
+          if (error.toString().includes('401') || error.toString().includes('auth')) {
+            errorMessage = 'Authentication failed - please log in again';
+          }
+          
           this.updateStatus({ 
             status: 'error', 
             isConnected: false, 
-            error: 'Connection failed - backend may not be accessible' 
+            error: errorMessage
           });
-          reject(new Error('Cannot connect to backend. Please ensure it is running and accessible.'));
+          reject(new Error(errorMessage));
         };
 
         this.ws.onclose = (event) => {
@@ -177,9 +191,11 @@ class AuraAPI extends SimpleEventEmitter {
           if (event.code === 1006) {
             errorMessage = 'Connection lost - backend may be down';
           } else if (event.code === 1008 || event.code === 4001) {
-            errorMessage = 'Authentication failed - invalid token';
+            errorMessage = 'Authentication failed - please log in again';
           } else if (event.code === 1011) {
             errorMessage = 'Backend error occurred';
+          } else if (event.code === 4403) {
+            errorMessage = 'Access denied - insufficient permissions';
           }
           
           this.updateStatus({ 
