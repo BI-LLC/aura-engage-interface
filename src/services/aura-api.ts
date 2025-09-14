@@ -1,6 +1,8 @@
-// Aura API Service - Real-time voice communication with configurable backend
-import { getAuraConfig, exchangeSupabaseToken, testHttpsReachability } from '@/config/aura';
-import { supabase } from '@/integrations/supabase/client';
+// Aura API Service - Real-time voice communication with production backend
+import { getAuraConfig } from '@/config/aura';
+import { supabase } from '@/lib/supabase';
+import { getBackendToken, apiFetch, clearBackendToken } from '@/lib/api';
+import { openVoiceSocket } from '@/lib/ws';
 
 // Type definitions
 export interface AuraMessage {
@@ -126,9 +128,9 @@ class AuraAPI extends SimpleEventEmitter {
         throw new Error('User not authenticated. Please log in first.');
       }
       
-      // Exchange Supabase token for backend JWT token
-      const backendToken = await exchangeSupabaseToken(session.access_token);
-      const wsUrl = `${config.wsUrl}/ws/voice/continuous?token=${encodeURIComponent(backendToken)}`;
+      // Get backend JWT token
+      const backendToken = await getBackendToken();
+      const wsUrl = `${config.wsBase}/voice/continuous?token=${encodeURIComponent(backendToken)}`;
       
       log('info', `Connecting to backend: ${wsUrl.split('?')[0]}...`, { 
         backendUrl: config.backendUrl,
@@ -493,9 +495,12 @@ class AuraAPI extends SimpleEventEmitter {
       
       const config = getAuraConfig();
       
-      // Test HTTPS reachability first
-      const httpsTest = await testHttpsReachability(config.backendUrl);
-      log('info', 'HTTPS reachability test', httpsTest);
+      // Test API reachability first
+      const httpsTest = await apiFetch('/health').then(
+        (response) => ({ success: response.ok, status: response.status }),
+        (error) => ({ success: false, error: error.message })
+      );
+      log('info', 'API reachability test', httpsTest);
       
       // Test WebSocket connection (skip auth for network test)
       let wsTest = { success: false, error: 'Not tested' };
@@ -527,7 +532,7 @@ class AuraAPI extends SimpleEventEmitter {
       
       const testResult = {
         success: httpsTest.success && wsTest.success,
-        error: !httpsTest.success ? `HTTPS: ${httpsTest.error}` : !wsTest.success ? `WebSocket: ${wsTest.error}` : undefined,
+        error: !httpsTest.success ? `HTTPS: ${(httpsTest as any).error || 'Connection failed'}` : !wsTest.success ? `WebSocket: ${wsTest.error}` : undefined,
         details: {
           httpsTest,
           wsTest,

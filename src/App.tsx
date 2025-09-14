@@ -9,11 +9,24 @@ import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
 import VoiceWidget from "./components/VoiceWidget";
 import { AuthProvider } from "./contexts/AuthContext";
+import { useEffect } from "react";
+import { checkBackendHealth } from "./lib/api";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   console.log('App component loading...');
+  
+  // Health check on app initialization
+  useEffect(() => {
+    checkBackendHealth().then(({ status, message }) => {
+      if (status === 'ok') {
+        console.log('✅ Health: OK');
+      } else {
+        console.log('❌ Health: Error -', message);
+      }
+    });
+  }, []);
   
   return (
     <QueryClientProvider client={queryClient}>

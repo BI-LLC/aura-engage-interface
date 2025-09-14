@@ -1,76 +1,52 @@
-// Aura Backend Configuration
-// Allows runtime configuration of backend URL
+// Aura Backend Configuration - Production Environment
+// Uses hardcoded production URLs from environment variables
 
 export interface AuraConfig {
   backendUrl: string;
   wsUrl: string;
-  isNgrok: boolean;
+  apiBase: string;
+  wsBase: string;
+  isNgrok: boolean; // Legacy compatibility
 }
 
-const DEFAULT_BACKEND_URL = 'https://iaura.ai';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://iaura.ai/api';
+const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://iaura.ai/ws';
 
 /**
- * Get the configured backend URL from various sources:
- * 1. URL parameter (?backend=https://example.com)
- * 2. localStorage setting
- * 3. Default production URL
- */
-export function getBackendUrl(): string {
-  // Check URL parameter first
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlBackend = urlParams.get('backend');
-  if (urlBackend) {
-    localStorage.setItem('aura_backend_url', urlBackend);
-    return urlBackend;
-  }
-
-  // Check localStorage
-  const storedBackend = localStorage.getItem('aura_backend_url');
-  if (storedBackend) {
-    return storedBackend;
-  }
-
-  // Return default
-  return DEFAULT_BACKEND_URL;
-}
-
-/**
- * Set the backend URL and store it in localStorage
- */
-export function setBackendUrl(url: string): void {
-  localStorage.setItem('aura_backend_url', url);
-  window.dispatchEvent(new CustomEvent('aura-config-changed'));
-}
-
-/**
- * Get complete Aura configuration
+ * Get complete Aura configuration for production environment
  */
 export function getAuraConfig(): AuraConfig {
-  const backendUrl = getBackendUrl();
-  const wsUrl = backendUrl.replace('http://', 'ws://').replace('https://', 'wss://');
-  const isNgrok = backendUrl.includes('ngrok') || backendUrl.includes('ngrok-free.app');
-
   return {
-    backendUrl,
-    wsUrl,
-    isNgrok
+    backendUrl: API_BASE.replace('/api', ''), // Legacy compatibility
+    wsUrl: WS_BASE, // Legacy compatibility  
+    apiBase: API_BASE,
+    wsBase: WS_BASE,
+    isNgrok: false // Production environment, not using ngrok
   };
 }
 
 /**
+ * @deprecated Use new API infrastructure instead
+ */
+export function setBackendUrl(url: string): void {
+  console.warn('setBackendUrl is deprecated - using production URLs only');
+}
+
+/**
  * Exchange Supabase token for backend JWT token
- * Sends the user's Supabase JWT to backend for validation and gets proper backend token
+ * @deprecated Use getBackendToken from src/lib/api.ts instead
  */
 export async function exchangeSupabaseToken(supabaseToken: string): Promise<string> {
   const config = getAuraConfig();
   
   try {
-    const response = await fetch(`${config.backendUrl}/api/auth/exchange-token`, {
+    const response = await fetch(`${config.apiBase}/auth/exchange-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${supabaseToken}`
       },
+      credentials: 'omit',
       body: JSON.stringify({
         supabase_token: supabaseToken
       })
@@ -91,12 +67,13 @@ export async function exchangeSupabaseToken(supabaseToken: string): Promise<stri
 
 /**
  * Test if the backend HTTPS endpoint is reachable
+ * @deprecated Use checkBackendHealth from src/lib/api.ts instead
  */
 export async function testHttpsReachability(backendUrl: string): Promise<{ success: boolean; error?: string; status?: number }> {
   try {
     const response = await fetch(backendUrl, { 
       method: 'GET',
-      mode: 'no-cors' // Avoid CORS issues for basic reachability test
+      credentials: 'omit'
     });
     
     return {
