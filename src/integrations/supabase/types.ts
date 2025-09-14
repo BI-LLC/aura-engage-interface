@@ -974,6 +974,10 @@ export type Database = {
         Args: { user_id: string }
         Returns: boolean
       }
+      is_same_tenant_user: {
+        Args: { target_user_id: string }
+        Returns: boolean
+      }
       ivfflat_bit_support: {
         Args: { "": unknown }
         Returns: unknown
