@@ -22,7 +22,9 @@ export const getBackendToken = async (): Promise<string> => {
     
     console.log('🔄 Exchanging Supabase token for backend JWT...');
     
-    const response = await fetch(`${API_BASE}/auth/exchange-token`, {
+    // Try different endpoint variations - first try /auth/token/exchange
+    console.log('🔄 Trying endpoint: /auth/token/exchange');
+    let response = await fetch(`${API_BASE}/auth/token/exchange`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -33,6 +35,38 @@ export const getBackendToken = async (): Promise<string> => {
         supabase_token: supabaseToken
       })
     });
+
+    // If that fails, try /auth/exchange
+    if (!response.ok && response.status === 404) {
+      console.log('🔄 Trying endpoint: /auth/exchange');
+      response = await fetch(`${API_BASE}/auth/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseToken}`
+        },
+        credentials: 'omit',
+        body: JSON.stringify({
+          supabase_token: supabaseToken
+        })
+      });
+    }
+
+    // If that fails, try /token/exchange
+    if (!response.ok && response.status === 404) {
+      console.log('🔄 Trying endpoint: /token/exchange');
+      response = await fetch(`${API_BASE}/token/exchange`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseToken}`
+        },
+        credentials: 'omit',
+        body: JSON.stringify({
+          supabase_token: supabaseToken
+        })
+      });
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
