@@ -22,18 +22,15 @@ export const getBackendToken = async (): Promise<string> => {
     
     console.log('🔄 Exchanging Supabase token for backend JWT...');
     
-    // Try different endpoint variations - first try /auth/exchange-token (correct endpoint)
-    console.log('🔄 Trying endpoint: /auth/exchange-token');
-    let response = await fetch(`${API_BASE}/auth/exchange-token`, {
+    // Try the correct endpoint with proper headers (no body needed)
+    console.log('🔄 Trying endpoint: /api/auth/exchange-token');
+    let response = await fetch(`${API_BASE}/api/auth/exchange-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${supabaseToken}`
       },
-      credentials: 'omit',
-      body: JSON.stringify({
-        supabase_token: supabaseToken
-      })
+      credentials: 'omit'
     });
 
     // If that fails, try /auth/exchange

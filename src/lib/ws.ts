@@ -1,10 +1,7 @@
 import { getBackendToken } from './api';
 
-const WS_BASE = import.meta.env.VITE_WS_BASE;
-
-if (!WS_BASE) {
-  throw new Error('VITE_WS_BASE environment variable is required');
-}
+// Use the backend WebSocket URL directly - replace with your actual backend URL
+const WS_BASE = 'wss://your-backend-url.com/ws';
 
 export interface VoiceSocketOptions {
   onOpen?: () => void;
