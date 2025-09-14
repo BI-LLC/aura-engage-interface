@@ -1,7 +1,7 @@
 import { getBackendToken } from './api';
 
-// Use the backend WebSocket URL directly - replace with your actual backend URL
-const WS_BASE = 'wss://your-backend-url.com/ws';
+// Use the backend WebSocket URL from environment variables
+const WS_BASE = 'wss://iaura.ai/ws';
 
 export interface VoiceSocketOptions {
   onOpen?: () => void;
@@ -18,7 +18,7 @@ export const openVoiceSocket = async (options: VoiceSocketOptions = {}): Promise
     console.log('🔌 Opening voice WebSocket connection...');
     
     const backendToken = await getBackendToken();
-    const wsUrl = `${WS_BASE}/voice/continuous?token=${encodeURIComponent(backendToken)}`;
+    const wsUrl = `${WS_BASE}/continuous?token=${encodeURIComponent(backendToken)}`;
     
     const ws = new WebSocket(wsUrl);
     
