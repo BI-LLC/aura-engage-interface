@@ -9,8 +9,15 @@ export interface AuraConfig {
   isNgrok: boolean; // Legacy compatibility
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://iaura.ai/api';
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://iaura.ai/ws';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.iaura.ai/api';
+const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://api.iaura.ai/ws';
+
+// Debug logging
+console.log('🔧 Aura Config Debug:');
+console.log('  API_BASE:', API_BASE);
+console.log('  WS_BASE:', WS_BASE);
+console.log('  VITE_API_BASE env:', import.meta.env.VITE_API_BASE);
+console.log('  VITE_WS_BASE env:', import.meta.env.VITE_WS_BASE);
 
 /**
  * Get complete Aura configuration for production environment
