@@ -17,7 +17,7 @@ export const openVoiceSocket = async (options: VoiceSocketOptions = {}, endpoint
     
     const config = getAuraConfig();
     const backendToken = await getBackendToken();
-    const route = endpoint === 'continuous' ? '/voice/continuous' : '/stream/voice';
+    const route = endpoint === 'continuous' ? '/ws/continuous' : '/ws/stream';
     const wsUrl = `${config.wsBase}${route}?token=${encodeURIComponent(backendToken)}`;
     
     console.log('🔗 Connecting to:', wsUrl.split('?')[0]);

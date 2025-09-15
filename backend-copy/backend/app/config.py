@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     # JWT Secret for Supabase token verification
     SUPABASE_JWT_SECRET: str = ""
     
+    # Supabase Configuration
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
+    
     # Future: Social Media API Keys
     # YOUTUBE_API_KEY: Optional[str] = None
     # LINKEDIN_ACCESS_TOKEN: Optional[str] = None
