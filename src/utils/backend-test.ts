@@ -4,7 +4,7 @@ export const testBackendConnection = async () => {
   
   try {
     // Test health endpoint
-    const healthResponse = await fetch('https://iaura.ai/health', {
+    const healthResponse = await fetch('https://api.iaura.ai/health', {
       method: 'GET',
       mode: 'cors'
     });
@@ -32,7 +32,7 @@ export const testCORS = async () => {
   console.log('🔍 Testing CORS...');
   
   try {
-    const response = await fetch('https://iaura.ai/health', {
+    const response = await fetch('https://api.iaura.ai/health', {
       method: 'OPTIONS',
       headers: {
         'Origin': window.location.origin,

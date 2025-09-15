@@ -1,6 +1,6 @@
 import { getSupabaseToken } from './supabase';
 
-const API_BASE = "https://iaura.ai";
+const API_BASE = "https://api.iaura.ai";
 
 let cachedBackendToken: string | null = null;
 
