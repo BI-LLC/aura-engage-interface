@@ -82,10 +82,7 @@ async def get_tenant_for_user(email: str, user_id: str) -> Optional[str]:
     return "default_tenant"
 
 @app.post("/api/auth/exchange-token")
-async def exchange_supabase_token(
-    authorization: str = Header(...),
-    request_body: Optional[dict] = None
-):
+async def exchange_supabase_token(authorization: str = Header(...)):
     """
     Exchange Supabase JWT token for backend-specific JWT token
     Fixed version with proper JWT verification

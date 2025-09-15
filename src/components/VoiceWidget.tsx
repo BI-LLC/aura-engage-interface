@@ -12,10 +12,12 @@ import {
   MessageSquare,
   Wifi,
   WifiOff,
-  AlertCircle
+  AlertCircle,
+  LogIn
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAura } from "@/hooks/useAura";
+import { useAuth } from "@/contexts/AuthContext";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "responding" | "muted" | "connecting" | "error";
 
@@ -31,7 +33,10 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
   const [showWelcome, setShowWelcome] = useState(true);
   const [waveformBars] = useState(Array.from({ length: 5 }, (_, i) => i));
   
-  // Use Aura API hook
+  // Get authentication state
+  const { user, loading } = useAuth();
+  
+  // Use Aura API hook only if authenticated
   const { 
     messages, 
     status, 
@@ -105,6 +110,12 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
   };
 
   const handleTalkModeToggle = async () => {
+    // Check authentication first
+    if (!user) {
+      window.location.href = '/auth';
+      return;
+    }
+
     if (!status.isConnected && !isTalkModeActive) {
       await reconnect();
       return;
@@ -127,9 +138,9 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
           size="lg"
           className={`w-16 h-16 rounded-full gradient-primary text-primary-foreground floating-shadow hover:scale-105 transition-bounce ${
             isTalkModeActive ? `animate-pulse shadow-lg ${getStatusGlow(voiceStatus)}` : ""
-          }`}
+          } ${!user ? "opacity-60" : ""}`}
         >
-          <Phone className="w-6 h-6" />
+          {!user ? <LogIn className="w-6 h-6" /> : <Phone className="w-6 h-6" />}
         </Button>
       </div>
     );
@@ -181,8 +192,31 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
 
         {!isMinimized ? (
           <CardContent className="p-4 space-y-4">
+            {/* Authentication Check */}
+            {!user && !loading && (
+              <div className="bg-gradient-to-r from-destructive/10 to-destructive/5 rounded-lg p-4 border border-destructive/20">
+                <div className="flex items-start gap-3 mb-2">
+                  <LogIn className="w-5 h-5 text-destructive mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-destructive">Sign In Required</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      You need to sign in to use the voice assistant.
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => window.location.href = '/auth'}
+                      className="mt-2 border-destructive/20 text-destructive hover:bg-destructive/10"
+                    >
+                      Sign In
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Welcome Message */}
-            {showWelcome && conversation.length === 0 && (
+            {user && showWelcome && conversation.length === 0 && (
               <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-4 border border-primary/20">
                 <div className="flex items-start justify-between mb-2">
                   <h4 className="font-semibold text-primary">Welcome to Aura! 👋</h4>
@@ -324,14 +358,19 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                 variant={isTalkModeActive ? "default" : "outline"}
                 size="lg"
                 onClick={handleTalkModeToggle}
-                disabled={!isInitialized || voiceStatus === 'connecting'}
+                disabled={!user || !isInitialized || voiceStatus === 'connecting'}
                 className={`flex-1 ${
                   isTalkModeActive 
                     ? `gradient-primary text-primary-foreground shadow-lg ${getStatusGlow(voiceStatus)}` 
                     : ""
                 } transition-all duration-300`}
               >
-                {voiceStatus === 'connecting' ? (
+                {!user ? (
+                  <>
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Sign In to Use
+                  </>
+                ) : voiceStatus === 'connecting' ? (
                   <>
                     <div className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     Connecting...
@@ -353,7 +392,7 @@ export default function VoiceWidget({ className }: VoiceWidgetProps) {
                 variant="outline"
                 size="lg"
                 onClick={() => setIsMuted(!isMuted)}
-                disabled={!isTalkModeActive}
+                disabled={!user || !isTalkModeActive}
               >
                 {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
               </Button>
