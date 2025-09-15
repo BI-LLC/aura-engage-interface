@@ -1,9 +1,29 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
-import { Mic, Brain, Zap, ArrowRight } from "lucide-react";
+import { Mic, Brain, Zap, ArrowRight, TestTube } from "lucide-react";
+import { testBackendConnection, testCORS } from '@/utils/backend-test';
 
 export default function Index() {
+  const [backendStatus, setBackendStatus] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
+  
+  const handleTestBackend = async () => {
+    setTesting(true);
+    console.log('🔍 Testing DigitalOcean backend...');
+    try {
+      const health = await testBackendConnection();
+      const cors = await testCORS();
+      setBackendStatus({ health, cors, timestamp: new Date().toISOString() });
+      console.log('Backend Test Results:', { health, cors });
+    } catch (error) {
+      console.error('Test failed:', error);
+      setBackendStatus({ error: error.message });
+    } finally {
+      setTesting(false);
+    }
+  };
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
@@ -16,6 +36,15 @@ export default function Index() {
             <span className="font-bold text-xl">Aura</span>
           </div>
           <div className="flex items-center gap-3">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleTestBackend}
+              disabled={testing}
+            >
+              <TestTube className="w-4 h-4 mr-2" />
+              {testing ? 'Testing...' : 'Test Backend'}
+            </Button>
             <Link to="/auth">
               <Button variant="ghost" size="sm">Sign In</Button>
             </Link>
@@ -94,6 +123,42 @@ export default function Index() {
           </div>
         </div>
       </section>
+
+      {/* Backend Status Display */}
+      {backendStatus && (
+        <section className="container py-8">
+          <Card className="max-w-2xl mx-auto">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TestTube className="w-5 h-5" />
+                DigitalOcean Backend Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium">Health Check (https://iaura.ai/health):</h4>
+                  <pre className="text-sm bg-muted p-2 rounded mt-1 overflow-auto">
+                    {JSON.stringify(backendStatus.health, null, 2)}
+                  </pre>
+                </div>
+                <div>
+                  <h4 className="font-medium">CORS Test:</h4>
+                  <pre className="text-sm bg-muted p-2 rounded mt-1 overflow-auto">
+                    {JSON.stringify(backendStatus.cors, null, 2)}
+                  </pre>
+                </div>
+                {backendStatus.error && (
+                  <div>
+                    <h4 className="font-medium text-destructive">Error:</h4>
+                    <p className="text-sm text-destructive mt-1">{backendStatus.error}</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="border-t py-8">
