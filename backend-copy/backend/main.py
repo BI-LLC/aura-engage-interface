@@ -33,6 +33,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+origins = [
+    "https://iaura.ai",
+    "https://www.iaura.ai",
+    "http://localhost:8880",   # add your local dev origin if needed
+]
+
 # CORS configuration - CRITICAL for frontend access
 app.add_middleware(
     CORSMiddleware,
