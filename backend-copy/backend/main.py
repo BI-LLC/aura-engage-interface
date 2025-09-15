@@ -43,7 +43,7 @@ origins = [
 # CORS configuration - CRITICAL for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domains
+    allow_origins=origins,  # Use specific origins for security
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
