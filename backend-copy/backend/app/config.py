@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # Redis URL
     REDIS_URL: str = "redis://localhost:6379"
     
+    # JWT Secret for Supabase token verification
+    SUPABASE_JWT_SECRET: str = ""
+    
     # Future: Social Media API Keys
     # YOUTUBE_API_KEY: Optional[str] = None
     # LINKEDIN_ACCESS_TOKEN: Optional[str] = None

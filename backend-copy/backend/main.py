@@ -64,7 +64,7 @@ conversation_manager = ContinuousConversationManager()
 continuous_voice.set_services(conversation_manager, auth_service)
 
 # Include routers
-app.include_router(continuous_voice.router)
+app.include_router(continuous_voice.router, prefix="/ws")
 
 # Health check endpoint
 @app.get("/health")
