@@ -1,10 +1,6 @@
 import { getSupabaseToken } from './supabase';
 
-const API_BASE = import.meta.env.VITE_API_BASE;
-
-if (!API_BASE) {
-  throw new Error('VITE_API_BASE environment variable is required');
-}
+const API_BASE = "https://iaura.ai";
 
 let cachedBackendToken: string | null = null;
 
@@ -22,9 +18,9 @@ export const getBackendToken = async (): Promise<string> => {
     
     console.log('🔄 Exchanging Supabase token for backend JWT...');
     
-    // Try the correct endpoint with proper headers (no body needed)
-    console.log('🔄 Trying endpoint: /api/auth/exchange-token');
-    let response = await fetch(`${API_BASE}/api/auth/exchange-token`, {
+    // Use the correct endpoint only
+    console.log('🔄 Exchanging token with endpoint: /api/auth/exchange-token');
+    const response = await fetch(`${API_BASE}/api/auth/exchange-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -32,38 +28,6 @@ export const getBackendToken = async (): Promise<string> => {
       },
       credentials: 'omit'
     });
-
-    // If that fails, try /auth/exchange
-    if (!response.ok && response.status === 404) {
-      console.log('🔄 Trying endpoint: /auth/exchange');
-      response = await fetch(`${API_BASE}/auth/exchange`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseToken}`
-        },
-        credentials: 'omit',
-        body: JSON.stringify({
-          supabase_token: supabaseToken
-        })
-      });
-    }
-
-    // If that fails, try /token/exchange
-    if (!response.ok && response.status === 404) {
-      console.log('🔄 Trying endpoint: /token/exchange');
-      response = await fetch(`${API_BASE}/token/exchange`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseToken}`
-        },
-        credentials: 'omit',
-        body: JSON.stringify({
-          supabase_token: supabaseToken
-        })
-      });
-    }
 
     if (!response.ok) {
       const errorText = await response.text();

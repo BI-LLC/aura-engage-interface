@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 import os
 import asyncio
@@ -188,6 +188,81 @@ async def root():
     }
 
 # Authentication endpoints
+import requests
+import json
+from fastapi import Header
+
+@app.post("/api/auth/exchange-token")
+async def exchange_supabase_token(
+    authorization: str = Header(...),
+    request_body: Optional[dict] = None
+):
+    """
+    Exchange Supabase JWT token for backend-specific JWT token
+    """
+    try:
+        # Extract token from Authorization header
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Invalid authorization header")
+        
+        supabase_token = authorization.replace("Bearer ", "")
+        
+        # Verify Supabase token by calling Supabase auth API
+        supabase_url = "https://rmqohckqlpkwtpzqimxk.supabase.co"
+        headers = {
+            "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtcW9oY2txbHBrd3RwenFpbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3Mjc5NjUsImV4cCI6MjA3MjMwMzk2NX0.rmVQ2tFrQQ1f3llsuhxDMGZynxru4UrFWfW-prNgFKM",
+            "Authorization": f"Bearer {supabase_token}"
+        }
+        
+        response = requests.get(f"{supabase_url}/auth/v1/user", headers=headers)
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid Supabase token")
+        
+        user_data = response.json()
+        user_id = user_data.get("id")
+        email = user_data.get("email")
+        
+        if not user_id or not email:
+            raise HTTPException(status_code=401, detail="Invalid user data from Supabase")
+        
+        # Map Supabase user to tenant (default mapping for now)
+        tenant_id = await get_tenant_for_user(email, user_id)
+        
+        if not tenant_id:
+            raise HTTPException(status_code=404, detail="User not associated with any tenant")
+        
+        # Generate backend JWT token
+        backend_token = auth_service.generate_token({
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "email": email,
+            "role": "user",
+            "organization": "default"
+        })
+        
+        return {
+            "token": backend_token,
+            "user": {
+                "user_id": user_id,
+                "email": email,
+                "tenant_id": tenant_id
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token exchange error: {e}")
+        raise HTTPException(status_code=500, detail="Token exchange failed")
+
+async def get_tenant_for_user(email: str, user_id: str) -> Optional[str]:
+    """
+    Map Supabase user to tenant ID
+    For now, we'll use a default tenant, but this should be implemented based on your business logic
+    """
+    # Default tenant mapping - customize this based on your needs
+    return "default-tenant-id"
 
 @app.post("/api/login")
 async def login(email: str, password: str, tenant_subdomain: str):
