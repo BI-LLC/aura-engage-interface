@@ -137,7 +137,7 @@ export default function Index() {
             <CardContent>
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-medium">Health Check (https://iaura.ai/health):</h4>
+                  <h4 className="font-medium">Health Check (https://api.iaura.ai/health):</h4>
                   <pre className="text-sm bg-muted p-2 rounded mt-1 overflow-auto">
                     {JSON.stringify(backendStatus.health, null, 2)}
                   </pre>
